@@ -67,6 +67,11 @@ export class PianoSynth {
     wet.connect(comp);
     comp.connect(ctx.destination);
 
+    // Canal direct pour le métronome (sec, net, sans réverbération)
+    this.metroGain = ctx.createGain();
+    this.metroGain.gain.value = 0.85;
+    this.metroGain.connect(comp);
+
     // Bruit pour l'attaque du marteau
     const len = Math.floor(ctx.sampleRate * 0.05);
     this.noise = ctx.createBuffer(1, len, ctx.sampleRate);
@@ -178,7 +183,7 @@ export class PianoSynth {
     return voice;
   }
 
-  /** Coup de métronome. */
+  /** Coup de métronome (sec, précis, sans réverbération). */
   click(t, accent) {
     const ctx = this.ctx;
     if (!ctx) return;
@@ -187,11 +192,11 @@ export class PianoSynth {
     o.type = 'triangle';
     o.frequency.value = accent ? 1760 : 1320;
     g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(accent ? 0.35 : 0.2, t + 0.002);
-    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.06);
-    o.connect(g).connect(this.master);
+    g.gain.linearRampToValueAtTime(accent ? 0.45 : 0.28, t + 0.001);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.035);
+    o.connect(g).connect(this.metroGain || this.master);
     o.start(t);
-    o.stop(t + 0.08);
+    o.stop(t + 0.04);
   }
 
   stopAll() {

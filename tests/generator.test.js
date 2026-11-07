@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateScore, TIME_SIGNATURES, LEVELS, HANDS } from '../public/js/generator.js';
+import { generateScore, TIME_SIGNATURES, LEVELS, HANDS, meterInfo } from '../public/js/generator.js';
 import { KEYS, MINOR_TYPES, buildScale, getKey, degreeOf, noteToD, analyzeScoreAmbitus, formatInterval } from '../public/js/theory.js';
 import { buildAmbitusKeyboardSvg } from '../public/js/ambitus-ribbon.js';
 import { midiFileBytes } from '../public/js/midi-file.js';
+import { Player } from '../public/js/player.js';
 
 const baseSettings = (over = {}) => ({
   timeSignature: '4/4', measures: 8, key: 'C', hands: 'both', level: 'debutant', minorType: 'harmonic',
@@ -122,6 +123,31 @@ test('paramètre tempo et tempo aléatoire', () => {
 
   const rnd = generateScore(baseSettings({ random: { bpm: true } }), 10);
   assert.ok(rnd.params.bpm >= 40 && rnd.params.bpm <= 200);
+});
+
+test('étalonnage exact du tempo : 60 BPM = 1 battement par seconde (60 battements/minute)', () => {
+  const fakeSynth = { now: 0, playNote: () => {}, click: () => {}, stopAll: () => {}, ensure: async () => {} };
+  const fakeMidi = { ready: false, allNotesOff: () => {} };
+  const player = new Player({ synth: fakeSynth, midi: fakeMidi });
+
+  for (const ts of TIME_SIGNATURES) {
+    const score = generateScore(baseSettings({ timeSignature: ts, bpm: 60 }), 1);
+    player.load(score);
+    player.setTempo(60);
+
+    // Durée exacte d'un battement (un temps) en secondes
+    const beatDuration = player.beatLen * player.spu;
+    assert.equal(Math.round(beatDuration * 1000), 1000, `À 60 BPM, 1 battement doit faire 1000ms pour ${ts}`);
+    const beatsPerMinute = 60 / beatDuration;
+    assert.equal(Math.round(beatsPerMinute), 60, `À 60 BPM, il doit y avoir 60 battements/minute pour ${ts}`);
+
+    // À 120 BPM : 1 battement = 0.5s = 500ms (120 battements/minute)
+    player.setTempo(120);
+    const beatDuration120 = player.beatLen * player.spu;
+    assert.equal(Math.round(beatDuration120 * 1000), 500, `À 120 BPM, 1 battement doit faire 500ms pour ${ts}`);
+    const beatsPerMinute120 = 60 / beatDuration120;
+    assert.equal(Math.round(beatsPerMinute120), 120, `À 120 BPM, il doit y avoir 120 battements/minute pour ${ts}`);
+  }
 });
 
 test('fichier MIDI valide', () => {

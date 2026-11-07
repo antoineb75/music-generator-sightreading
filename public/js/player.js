@@ -40,16 +40,18 @@ export class Player {
     this.posU = 0;
   }
 
+  get beatLen() {
+    return this.score?.meter?.beatLen ?? 4;
+  }
+
   get spu() {
-    return 60 / this.bpm / 4; // secondes par double-croche (tempo à la noire)
+    // Étalonnage universel : 1 battement (beatLen unités) = 60 / this.bpm secondes.
+    // À 60 BPM, 1 battement dure EXACTEMENT 1.000000 seconde (60 battements par minute).
+    return 60 / (this.bpm * this.beatLen);
   }
 
   clock() {
     return this.output === 'midi' ? performance.now() / 1000 : this.synth.now;
-  }
-
-  get visualDelay() {
-    return this.output === 'synth' ? this.synth.outputLatency : 0;
   }
 
   timeOf(u) {
@@ -92,7 +94,7 @@ export class Player {
     else if (!this.midi.ready) throw new Error('Aucune sortie MIDI sélectionnée.');
 
     if (this.posU >= this.score.totalUnits) this.posU = 0;
-    this.anchorTime = this.clock() + 0.12;
+    this.anchorTime = this.clock() + 0.05; // 50ms de latence de démarrage immédiate
     this.anchorU = this.posU;
     this.noteIdx = this.notes.findIndex((n) => n.u >= this.posU);
     if (this.noteIdx < 0) this.noteIdx = this.notes.length;
@@ -108,7 +110,9 @@ export class Player {
     this.#setState('playing');
     this.timer = setInterval(() => this.#tick(), TICK_MS);
     this.#tick();
-    this.raf = requestAnimationFrame(() => this.#frame());
+    if (typeof requestAnimationFrame === 'function') {
+      this.raf = requestAnimationFrame(() => this.#frame());
+    }
   }
 
   pause() {
@@ -136,7 +140,9 @@ export class Player {
 
   #halt() {
     clearInterval(this.timer);
-    cancelAnimationFrame(this.raf);
+    if (typeof cancelAnimationFrame === 'function' && this.raf) {
+      cancelAnimationFrame(this.raf);
+    }
     this.timer = null;
     if (this.output === 'synth') this.synth.stopAll();
     else this.midi.allNotesOff();
@@ -159,8 +165,7 @@ export class Player {
         this.midi.noteOn(n.channel, n.midi, n.vel, t);
         this.midi.noteOff(n.channel, n.midi, t + gate);
       }
-      const vd = this.visualDelay;
-      this.visual.push({ id: n.id, on: t + vd, off: t + d + vd - 0.02, started: false });
+      this.visual.push({ id: n.id, on: t, off: t + d - 0.015, started: false });
     }
     if (this.metronome) {
       while (this.beatIdx < this.beats.length && this.timeOf(this.beats[this.beatIdx].u) < horizon) {
@@ -199,8 +204,10 @@ export class Player {
       keep.push(v);
     }
     this.visual = keep;
-    const u = this.unitsAt(now - this.visualDelay);
+    const u = this.unitsAt(now);
     if (u >= 0) this.onPosition?.(Math.min(u, this.score.totalUnits));
-    this.raf = requestAnimationFrame(() => this.#frame());
+    if (typeof requestAnimationFrame === 'function') {
+      this.raf = requestAnimationFrame(() => this.#frame());
+    }
   }
 }

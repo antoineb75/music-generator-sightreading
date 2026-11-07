@@ -32,7 +32,11 @@ const meta = (tick, type, payload) => ({ tick, order: 0, bytes: [0xff, type, ...
 
 export function midiFileBytes(score, bpm) {
   const { meter, key } = score;
-  const tempo = Math.round(60000000 / bpm);
+  // Étalonnage universel : 1 battement = 60000000 / bpm microsecondes.
+  // En MIDI, l'événement 0x51 exprime les microsecondes par noire (quarter note = 4 unités).
+  // 1 battement faisant meter.beatLen unités, 1 unité = (60000000 / bpm) / meter.beatLen µs.
+  // 1 noire (4 unités) = 4 * ((60000000 / bpm) / meter.beatLen) µs.
+  const tempo = Math.round((60000000 / bpm) * (4 / meter.beatLen));
   const conductor = [
     meta(0, 0x03, ascii('Partitio')),
     meta(0, 0x51, [(tempo >> 16) & 255, (tempo >> 8) & 255, tempo & 255]),

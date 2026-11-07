@@ -204,6 +204,8 @@ export function meterInfo(ts) {
     compound = true;
   } else if (den === 8) {
     beatLen = 2;
+  } else if (den === 2) {
+    beatLen = 8;
   } else {
     beatLen = 4;
   }
@@ -288,6 +290,30 @@ const BEAT_PATTERNS = {
     intermediaire: [[[2], 2], [[1, 1], 2]],
     avance: [[[2], 1.5], [[1, 1], 2], [[1, 1], 1]],
     expert: [[[1, 1], 2.5], [[2], 1]],
+  },
+  8: {
+    initiation: [[[8], 1]],
+    debutant: [
+      [[8], 2],
+      [[4, 4], 3],
+    ],
+    intermediaire: [
+      [[8], 1.5],
+      [[4, 4], 3],
+      [[4, 2, 2], 1.5],
+    ],
+    avance: [
+      [[4, 4], 2.5],
+      [[4, 2, 2], 2],
+      [[2, 2, 4], 1.5],
+      [[8], 1],
+    ],
+    expert: [
+      [[4, 2, 2], 2],
+      [[2, 2, 2, 2], 2],
+      [[4, 4], 1.5],
+      [[8], 1],
+    ],
   },
 };
 
