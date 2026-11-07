@@ -256,37 +256,39 @@
       <!-- Composant visuel d'ambitus adaptatif -->
       <div id="ambitus-card" class="ambitus-card" aria-label="Ambitus et étendue des notes du morceau"></div>
 
-      <!-- Bannière d'affichage en direct de la note la plus aiguë et de l'accord -->
-      <div id="live-playback-banner" class="live-playback-banner no-print" style="display: none;" aria-live="polite">
-        <div class="live-hint-card live-hint-top-note">
-          <div class="live-hint-meta">
-            <span class="live-hint-icon">🎵</span>
-            <span class="live-hint-title">Note la plus aiguë</span>
-          </div>
-          <div id="live-top-note-val" class="live-hint-badge live-badge-note">—</div>
-        </div>
-
-        <div class="live-hint-card live-hint-chord">
-          <div class="live-hint-meta">
-            <span class="live-hint-icon">🎹</span>
-            <span class="live-hint-title">Accord en cours</span>
-          </div>
-          <div id="live-chord-val" class="live-hint-badge live-badge-chord">—</div>
-        </div>
-
-        <div class="live-hint-card live-hint-measure">
-          <div class="live-hint-meta">
-            <span class="live-hint-icon">📏</span>
-            <span class="live-hint-title">Position</span>
-          </div>
-          <div id="live-measure-val" class="live-hint-badge live-badge-measure">—</div>
-        </div>
-      </div>
-
       <!-- Conteneur SVG VexFlow -->
       <div id="score-container" class="score-container"></div>
     </section>
   </main>
+
+  <!-- Barre basse flottante permanente d'aide à la lecture (Note la plus aiguë, Accord, Position) -->
+  <aside id="live-playback-banner" class="live-playback-dock no-print" style="display: none;" aria-live="polite">
+    <div class="live-dock-inner">
+      <div class="live-hint-card live-hint-top-note">
+        <div class="live-hint-meta">
+          <span class="live-hint-icon">🎵</span>
+          <span class="live-hint-title">Note la plus aiguë</span>
+        </div>
+        <div id="live-top-note-val" class="live-hint-badge live-badge-note">—</div>
+      </div>
+
+      <div class="live-hint-card live-hint-chord">
+        <div class="live-hint-meta">
+          <span class="live-hint-icon">🎹</span>
+          <span class="live-hint-title">Accord en cours</span>
+        </div>
+        <div id="live-chord-val" class="live-hint-badge live-badge-chord">—</div>
+      </div>
+
+      <div class="live-hint-card live-hint-measure">
+        <div class="live-hint-meta">
+          <span class="live-hint-icon">📏</span>
+          <span class="live-hint-title">Position</span>
+        </div>
+        <div id="live-measure-val" class="live-hint-badge live-badge-measure">—</div>
+      </div>
+    </div>
+  </aside>
 
   <footer class="app-footer no-print">
     <p>Partitio • Application pédagogique de génération et lecture de partitions • Conçue pour professeurs et élèves de piano</p>

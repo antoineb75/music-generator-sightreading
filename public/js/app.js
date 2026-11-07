@@ -129,12 +129,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   function updateLiveBannerVisibility() {
-    const isPlayingOrPaused = player.state === 'playing' || player.state === 'paused';
-    if (settings.liveHints && isPlayingOrPaused) {
-      if (liveBanner) liveBanner.style.display = 'flex';
-      updateLivePlaybackBanner(player.posU);
+    if (settings.liveHints && currentScore) {
+      if (liveBanner) liveBanner.style.display = 'block';
+      document.body.classList.add('has-live-dock');
+      updateLivePlaybackBanner(player.posU || 0);
     } else {
       if (liveBanner) liveBanner.style.display = 'none';
+      document.body.classList.remove('has-live-dock');
     }
   }
 
@@ -414,6 +415,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     `;
 
     renderCurrentScore();
+    updateLiveBannerVisibility();
   }
 
   function renderCurrentScore() {
