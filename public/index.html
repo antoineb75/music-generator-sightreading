@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Partitio - Générateur & Lecteur de Partitions de Piano</title>
+  <meta name="description" content="Application pédagogique pour professeurs et élèves de piano : générez, jouez, visualisez et imprimez des partitions sur mesure.">
+  <link rel="stylesheet" href="css/styles.css">
+  <script src="vendor/vexflow.js"></script>
+</head>
+<body>
+  <!-- En-tête -->
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-icon" aria-hidden="true">🎹</span>
+      <div>
+        <h1 class="brand-title">Partitio</h1>
+        <span class="brand-tagline">Générateur de partitions pour professeurs de musique</span>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button id="btn-print" class="btn btn-secondary" title="Imprimer la partition (A4)">
+        <span>🖨️</span> <span class="no-mobile">Imprimer</span>
+      </button>
+      <button id="btn-download-midi" class="btn btn-secondary" title="Télécharger le fichier MIDI (.mid)">
+        <span>💾</span> <span class="no-mobile">Export .mid</span>
+      </button>
+    </div>
+  </header>
+
+  <main class="app-container">
+    <!-- Panneau des réglages pédagogiques -->
+    <section class="panel" id="panel-settings">
+      <div class="panel-header" id="panel-toggle">
+        <h2 class="panel-title">
+          <span>⚙️ Paramètres pédagogiques</span>
+        </h2>
+        <button type="button" class="panel-toggle-btn" id="btn-toggle-panel" aria-expanded="true">
+          Masquer ▲
+        </button>
+      </div>
+
+      <div class="params-grid">
+        <!-- 1. Tonalité -->
+        <div class="param-group">
+          <div class="param-label-row">
+            <label for="select-key">Tonalité</label>
+            <label class="random-checkbox-label" title="Sélectionner aléatoirement à chaque génération">
+              <input type="checkbox" id="rnd-key"> 🎲 Aléa
+            </label>
+          </div>
+          <select id="select-key" class="select-input"></select>
+        </div>
+
+        <!-- 2. Type de mineur (actif si mineur) -->
+        <div class="param-group" id="group-minor-type">
+          <div class="param-label-row">
+            <label for="select-minor-type">Type de mineur</label>
+            <label class="random-checkbox-label" title="Sélectionner aléatoirement à chaque génération">
+              <input type="checkbox" id="rnd-minor-type"> 🎲 Aléa
+            </label>
+          </div>
+          <select id="select-minor-type" class="select-input">
+            <option value="harmonic">Harmonique (défaut)</option>
+            <option value="natural">Naturel</option>
+            <option value="melodic">Mélodique (asc./desc.)</option>
+          </select>
+        </div>
+
+        <!-- 3. Signature rythmique -->
+        <div class="param-group">
+          <div class="param-label-row">
+            <label for="select-time-sig">Signature rythmique</label>
+            <label class="random-checkbox-label" title="Sélectionner aléatoirement à chaque génération">
+              <input type="checkbox" id="rnd-time-sig"> 🎲 Aléa
+            </label>
+          </div>
+          <select id="select-time-sig" class="select-input">
+            <option value="4/4">4/4 (Quatre temps)</option>
+            <option value="3/4">3/4 (Trois temps / Valse)</option>
+            <option value="2/4">2/4 (Deux temps)</option>
+            <option value="6/8">6/8 (Binaire composé)</option>
+            <option value="2/2">2/2 (Alla breve)</option>
+            <option value="3/8">3/8 (Trois croches)</option>
+            <option value="5/4">5/4 (Cinq temps)</option>
+            <option value="12/8">12/8 (Quatre temps composés)</option>
+          </select>
+        </div>
+
+        <!-- 4. Nombre de mesures -->
+        <div class="param-group">
+          <div class="param-label-row">
+            <label for="input-measures">Nombre de mesures</label>
+            <label class="random-checkbox-label" title="Sélectionner aléatoirement à chaque génération">
+              <input type="checkbox" id="rnd-measures"> 🎲 Aléa
+            </label>
+          </div>
+          <div class="param-input-wrap">
+            <input type="range" id="input-measures" class="range-input" min="1" max="32" step="1" value="8">
+            <span id="badge-measures" class="measures-val-badge">8</span>
+          </div>
+        </div>
+
+        <!-- 5. Niveau de difficulté -->
+        <div class="param-group">
+          <div class="param-label-row">
+            <label for="select-level">Niveau</label>
+            <label class="random-checkbox-label" title="Sélectionner aléatoirement à chaque génération">
+              <input type="checkbox" id="rnd-level"> 🎲 Aléa
+            </label>
+          </div>
+          <select id="select-level" class="select-input">
+            <option value="initiation">1. Initiation (Tout débutant : position 5 doigts, rondes & blanches)</option>
+            <option value="debutant">2. Débutant (Noires, croches, triades simples)</option>
+            <option value="intermediaire">3. Intermédiaire (Noires pointées, valse, accords V7)</option>
+            <option value="avance">4. Avancé (Doubles croches, 7èmes variées, mélodie harmonisée)</option>
+            <option value="expert">5. Virtuose (Polyphonie riche, accords 9e/13e, arpèges rapides)</option>
+          </select>
+        </div>
+
+        <!-- 6. Mains / Portées -->
+        <div class="param-group">
+          <div class="param-label-row">
+            <label for="select-hands">Mains à travailler</label>
+            <label class="random-checkbox-label" title="Sélectionner aléatoirement à chaque génération">
+              <input type="checkbox" id="rnd-hands"> 🎲 Aléa
+            </label>
+          </div>
+          <select id="select-hands" class="select-input">
+            <option value="both">Deux mains (Grand portée Sol & Fa)</option>
+            <option value="right">Main droite seule (Clé de Sol)</option>
+            <option value="left">Main gauche seule (Clé de Fa)</option>
+          </select>
+        </div>
+
+        <!-- 7. Accords enrichis -->
+        <div class="param-group">
+          <div class="param-label-row">
+            <label for="select-enriched">Accords enrichis (7e, 9e...)</label>
+            <label class="random-checkbox-label" title="Sélectionner aléatoirement l'enrichissement d'accords">
+              <input type="checkbox" id="rnd-enriched"> 🎲 Aléa
+            </label>
+          </div>
+          <select id="select-enriched" class="select-input">
+            <option value="auto">Automatique (progressif : 1 sans, 2 V7, 3 7e/add9, 4 9e, 5 9e/13e)</option>
+            <option value="both">Deux mains (MD mélodie harmonisée + MG accords)</option>
+            <option value="right">Main droite seule (Mélodie enrichie d'accords)</option>
+            <option value="left">Main gauche seule (Basse, accords & voicings enrichis)</option>
+            <option value="seventh">Accords de 7e uniquement (Deux mains)</option>
+            <option value="extended">Accords très enrichis 9e / 11e / 13e (Deux mains)</option>
+            <option value="none">Désactivé (Triades simples uniquement)</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <!-- Barre de transport & lecture -->
+    <section class="transport-bar">
+      <div class="transport-main">
+        <!-- Bouton Générer -->
+        <button id="btn-generate" class="btn btn-primary" title="Générer une nouvelle partition avec les réglages">
+          <span>✨</span> <span>Générer</span>
+        </button>
+
+        <!-- Bouton Jouer / Pause -->
+        <button id="btn-play" class="btn btn-accent" title="Lancer la lecture de la partition">
+          <span id="icon-play">▶</span> <span id="label-play">Jouer</span>
+        </button>
+
+        <!-- Bouton Stop -->
+        <button id="btn-stop" class="btn btn-secondary btn-icon-only" title="Arrêter et revenir au début">
+          <span>⏹</span>
+        </button>
+
+        <!-- Métronome -->
+        <label class="metronome-toggle" title="Activer / désactiver le clic du métronome">
+          <input type="checkbox" id="check-metronome"> <span>⏱️ Clic</span>
+        </label>
+      </div>
+
+      <div class="transport-tools">
+        <!-- Tempo (BPM) -->
+        <div class="tempo-control" title="Ajuster le tempo en battements par minute">
+          <label for="input-bpm">Tempo :</label>
+          <input type="range" id="input-bpm" class="tempo-slider" min="40" max="200" step="2" value="90">
+          <span id="badge-bpm" class="tempo-badge">90 BPM</span>
+        </div>
+
+        <!-- Sortie audio / MIDI -->
+        <div class="audio-output-select">
+          <label for="select-output">Sortie :</label>
+          <select id="select-output" class="select-input" style="width: auto;">
+            <option value="synth">🎹 Piano synthétisé (Web Audio)</option>
+            <option value="midi">🎛️ Sortie MIDI externe</option>
+          </select>
+          <select id="select-midi-device" class="select-input" style="display: none; width: auto;" title="Périphérique MIDI de sortie">
+            <option value="">(Recherche de périphériques...)</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <!-- Zone d'affichage de la partition -->
+    <section class="score-wrapper" id="score-wrapper">
+      <div class="score-meta-header">
+        <div>
+          <h2 id="score-title" class="score-title">Partition de piano</h2>
+          <div id="score-details" class="score-details">
+            <span>Tonalité : Do majeur</span>
+            <span>•</span>
+            <span>Mesure : 4/4</span>
+            <span>•</span>
+            <span>8 mesures</span>
+          </div>
+        </div>
+        <div class="no-print" style="font-size: 0.8rem; color: #64748b;">
+          💡 <em>Les notes jouées s'illuminent en direct. Cliquez sur une note pour écouter.</em>
+        </div>
+      </div>
+
+      <!-- Conteneur SVG VexFlow -->
+      <div id="score-container" class="score-container"></div>
+    </section>
+  </main>
+
+  <footer class="app-footer no-print">
+    <p>Partitio • Application pédagogique de génération et lecture de partitions • Conçue pour professeurs et élèves de piano</p>
+  </footer>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>

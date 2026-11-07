@@ -1,0 +1,24 @@
+server {
+    listen ${PORT};
+    server_name localhost;
+
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # Compression gzip pour accélérer le chargement (notamment pour vexflow.js)
+    gzip on;
+    gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+    gzip_min_length 1000;
+
+    location / {
+        try_files $uri $uri/ /index.html;
+        # Mise en cache raisonnable des fichiers statiques
+        expires 1h;
+        add_header Cache-Control "public, no-transform";
+    }
+
+    # Sécurité basique
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header X-Frame-Options "SAMEORIGIN" always;
+    add_header X-XSS-Protection "1; mode=block" always;
+}
