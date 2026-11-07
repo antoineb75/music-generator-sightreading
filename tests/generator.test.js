@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateScore, TIME_SIGNATURES, LEVELS, HANDS, meterInfo } from '../public/js/generator.js';
-import { KEYS, MINOR_TYPES, buildScale, getKey, degreeOf, noteToD, analyzeScoreAmbitus, formatInterval } from '../public/js/theory.js';
+import { KEYS, MINOR_TYPES, buildScale, getKey, degreeOf, noteToD, analyzeScoreAmbitus, formatInterval, describeChord, getActivePlaybackInfo } from '../public/js/theory.js';
 import { buildAmbitusKeyboardSvg } from '../public/js/ambitus-ribbon.js';
 import { midiFileBytes } from '../public/js/midi-file.js';
 import { Player } from '../public/js/player.js';
@@ -286,4 +286,138 @@ test('ambitus extrême : C1 (extrême grave) et C7 (extrême aigu) sans dépasse
       }
     }
   }
+});
+
+test('describeChord : identification musicale exacte des accords (majeurs, mineurs, 7e, sus4)', () => {
+  const kC = getKey('C');
+  const scaleC = buildScale(kC, 'major');
+
+  // I = Do majeur
+  const chI = describeChord({ degree: 0 }, kC, scaleC);
+  assert.equal(chI.rootName, 'Do');
+  assert.equal(chI.fullLabel, 'Do majeur (I)');
+  assert.equal(chI.shortLabel, 'Do');
+
+  // ii = Ré mineur
+  const chII = describeChord({ degree: 1 }, kC, scaleC);
+  assert.equal(chII.rootName, 'Ré');
+  assert.equal(chII.fullLabel, 'Ré mineur (ii)');
+  assert.equal(chII.shortLabel, 'Rém');
+
+  // V7 = Sol 7 (dominante)
+  const chV7 = describeChord({ degree: 4, seventh: true }, kC, scaleC);
+  assert.equal(chV7.rootName, 'Sol');
+  assert.equal(chV7.fullLabel, 'Sol 7 (V7)');
+  assert.equal(chV7.shortLabel, 'Sol 7');
+
+  // Imaj7 = Do maj7
+  const chImaj7 = describeChord({ degree: 0, seventh: true }, kC, scaleC);
+  assert.equal(chImaj7.rootName, 'Do');
+  assert.equal(chImaj7.fullLabel, 'Do maj7 (I7)');
+
+  // IV = Fa majeur
+  const chIV = describeChord({ degree: 3 }, kC, scaleC);
+  assert.equal(chIV.rootName, 'Fa');
+  assert.equal(chIV.fullLabel, 'Fa majeur (IV)');
+
+  // sus4
+  const chSus4 = describeChord({ degree: 4, sus4: true }, kC, scaleC);
+  assert.equal(chSus4.rootName, 'Sol');
+  assert.equal(chSus4.fullLabel, 'Sol sus4 (V)');
+
+  // En La mineur harmonique : V7 = Mi 7 (dominante avec sensible Sol#)
+  const kAm = getKey('Am');
+  const scaleAm = buildScale(kAm, 'harmonic');
+  const chAmV7 = describeChord({ degree: 4, seventh: true }, kAm, scaleAm);
+  assert.equal(chAmV7.rootName, 'Mi');
+  assert.equal(chAmV7.fullLabel, 'Mi 7 (V7)');
+});
+
+test('getActivePlaybackInfo : identification en direct de la note la plus aiguë et de l accord en cours', () => {
+  const mockScore = {
+    meter: { measureLen: 16, beatLen: 4 },
+    totalUnits: 32,
+    key: getKey('C'),
+    scale: buildScale(getKey('C'), 'major'),
+    slots: [
+      { m: 0, start: 0, len: 16, degree: 0 }, // Mesure 1: Do majeur
+      { m: 1, start: 0, len: 8, degree: 3 },  // Mesure 2 (début): Fa majeur
+      { m: 1, start: 8, len: 8, degree: 4, seventh: true }, // Mesure 2 (fin): Sol 7
+    ],
+    measures: [
+      {
+        index: 0,
+        treble: [
+          {
+            id: 't0-0', hand: 'right', start: 0, dur: 8, rest: false,
+            notes: [{ D: 28, alter: 0, midi: 60 }, { D: 30, alter: 0, midi: 64 }], // C4 (60), E4 (64 -> plus aiguë)
+          },
+          {
+            id: 't0-1', hand: 'right', start: 8, dur: 8, rest: false,
+            notes: [{ D: 32, alter: 0, midi: 67 }], // G4 (67 -> Sol 4)
+          },
+        ],
+        bass: [
+          {
+            id: 'b0-0', hand: 'left', start: 0, dur: 16, rest: false,
+            notes: [{ D: 21, alter: 0, midi: 48 }], // C3 (48)
+          },
+        ],
+      },
+      {
+        index: 1,
+        treble: [
+          {
+            id: 't1-0', hand: 'right', start: 0, dur: 8, rest: false,
+            notes: [{ D: 34, alter: 0, midi: 71 }], // B4 (71 -> Si 4)
+          },
+          {
+            id: 't1-1', hand: 'right', start: 8, dur: 8, rest: false,
+            notes: [{ D: 35, alter: 0, midi: 72 }], // C5 (72 -> Do 5)
+          },
+        ],
+        bass: [
+          {
+            id: 'b1-0', hand: 'left', start: 0, dur: 8, rest: false,
+            notes: [{ D: 24, alter: 0, midi: 53 }], // F3
+          },
+          {
+            id: 'b1-1', hand: 'left', start: 8, dur: 8, rest: false,
+            notes: [{ D: 25, alter: 0, midi: 55 }], // G3
+          },
+        ],
+      },
+    ],
+  };
+
+  // À u = 2 (dans la 1ère moitié de la mesure 1):
+  // Notes actives: C4 (60), E4 (64), C3 (48). Note la plus aiguë = E4 = Mi 4.
+  // Accord: Do majeur (I)
+  const infoU2 = getActivePlaybackInfo(mockScore, 2);
+  assert.equal(infoU2.hasNote, true);
+  assert.equal(infoU2.topNote, 'Mi 4');
+  assert.equal(infoU2.topNoteMidi, 64);
+  assert.equal(infoU2.chord, 'Do majeur (I)');
+  assert.equal(infoU2.measureLabel, '1 / 2');
+
+  // À u = 10 (dans la 2ème moitié de la mesure 1):
+  // Notes actives: G4 (67), C3 (48). Note la plus aiguë = G4 = Sol 4.
+  const infoU10 = getActivePlaybackInfo(mockScore, 10);
+  assert.equal(infoU10.topNote, 'Sol 4');
+  assert.equal(infoU10.chord, 'Do majeur (I)');
+  assert.equal(infoU10.measureLabel, '1 / 2');
+
+  // À u = 18 (mesure 2, début):
+  // Accord: Fa majeur (IV). Note la plus aiguë = Si 4 (71).
+  const infoU18 = getActivePlaybackInfo(mockScore, 18);
+  assert.equal(infoU18.topNote, 'Si 4');
+  assert.equal(infoU18.chord, 'Fa majeur (IV)');
+  assert.equal(infoU18.measureLabel, '2 / 2');
+
+  // À u = 26 (mesure 2, fin):
+  // Accord: Sol 7 (V7). Note la plus aiguë = Do 5 (72).
+  const infoU26 = getActivePlaybackInfo(mockScore, 26);
+  assert.equal(infoU26.topNote, 'Do 5');
+  assert.equal(infoU26.chord, 'Sol 7 (V7)');
+  assert.equal(infoU26.measureLabel, '2 / 2');
 });

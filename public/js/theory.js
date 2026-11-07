@@ -314,3 +314,178 @@ export function analyzeScoreAmbitus(score) {
 
   return res;
 }
+
+// ── Description harmonique des accords et repérage en cours de jeu ───────
+
+const ROMAN_MAJOR = ['I', 'ii', 'iii', 'IV', 'V', 'vi', 'vii°'];
+const ROMAN_MINOR = ['i', 'ii°', 'III', 'iv', 'V', 'VI', 'vii°'];
+
+/**
+ * Détermine le nom en français et le degré d'un accord harmonique.
+ * @param {Object} slot - { degree, seventh, ninth, sus4, add9 }
+ * @param {Object} key - Tonalité
+ * @param {Object} scale - Gamme
+ * @returns {{ rootName: string, quality: string, shortLabel: string, fullLabel: string, degreeRoman: string }}
+ */
+export function describeChord(slot, key, scale) {
+  if (!slot || !key) return { rootName: '—', quality: '', shortLabel: '—', fullLabel: '—', degreeRoman: '' };
+  const d = slot.degree ?? 0;
+  const rootLetter = (key.tonicLetter + d) % 7;
+  const rootAlter = scale?.harmony?.[d] ?? 0;
+  const rootName = frNoteName(rootLetter, rootAlter);
+
+  const pcRoot = (NATURAL_PC[rootLetter] + rootAlter + 12) % 12;
+
+  // Tierce (ou quarte si sus4)
+  const thirdDeg = slot.sus4 ? (d + 3) % 7 : (d + 2) % 7;
+  const thirdLetter = (key.tonicLetter + thirdDeg) % 7;
+  const thirdAlter = scale?.harmony?.[thirdDeg] ?? 0;
+  const pcThird = (NATURAL_PC[thirdLetter] + thirdAlter + 12) % 12;
+  const thirdInterval = (pcThird - pcRoot + 12) % 12;
+
+  // Quinte
+  const fifthDeg = (d + 4) % 7;
+  const fifthLetter = (key.tonicLetter + fifthDeg) % 7;
+  const fifthAlter = scale?.harmony?.[fifthDeg] ?? 0;
+  const pcFifth = (NATURAL_PC[fifthLetter] + fifthAlter + 12) % 12;
+  const fifthInterval = (pcFifth - pcRoot + 12) % 12;
+
+  // Septième
+  let seventhInterval = -1;
+  if (slot.seventh) {
+    const seventhDeg = (d + 6) % 7;
+    const seventhLetter = (key.tonicLetter + seventhDeg) % 7;
+    const seventhAlter = scale?.harmony?.[seventhDeg] ?? 0;
+    const pcSeventh = (NATURAL_PC[seventhLetter] + seventhAlter + 12) % 12;
+    seventhInterval = (pcSeventh - pcRoot + 12) % 12;
+  }
+
+  let quality = '';
+  let shortQuality = '';
+
+  if (slot.sus4) {
+    quality = slot.seventh ? '7sus4' : 'sus4';
+    shortQuality = quality;
+  } else if (thirdInterval === 4) {
+    // Accord majeur
+    if (fifthInterval === 7) {
+      if (slot.seventh) {
+        if (seventhInterval === 10) {
+          quality = slot.ninth ? '9' : '7';
+          shortQuality = quality;
+        } else {
+          quality = slot.ninth ? 'maj9' : 'maj7';
+          shortQuality = quality;
+        }
+      } else if (slot.add9) {
+        quality = 'add9';
+        shortQuality = 'add9';
+      } else {
+        quality = 'majeur';
+        shortQuality = '';
+      }
+    } else if (fifthInterval === 8) {
+      quality = 'augmenté';
+      shortQuality = 'aug';
+    }
+  } else if (thirdInterval === 3) {
+    // Accord mineur
+    if (fifthInterval === 7) {
+      if (slot.seventh) {
+        quality = slot.ninth ? 'm9' : 'm7';
+        shortQuality = quality;
+      } else if (slot.add9) {
+        quality = 'm(add9)';
+        shortQuality = quality;
+      } else {
+        quality = 'mineur';
+        shortQuality = 'm';
+      }
+    } else if (fifthInterval === 6) {
+      if (slot.seventh) {
+        quality = seventhInterval === 9 ? 'dim7' : 'm7♭5';
+        shortQuality = quality;
+      } else {
+        quality = 'diminué';
+        shortQuality = 'dim';
+      }
+    }
+  }
+
+  const romanList = key.mode === 'minor' ? ROMAN_MINOR : ROMAN_MAJOR;
+  let degRoman = romanList[d] ?? '';
+  if (slot.seventh) degRoman += '7';
+  if (slot.ninth) degRoman += '9';
+
+  const shortLabel = `${rootName}${shortQuality ? (shortQuality.startsWith('m') && !shortQuality.startsWith('maj') ? shortQuality : ' ' + shortQuality) : ''}`;
+  const fullLabel = `${rootName} ${quality}`.trim() + (degRoman ? ` (${degRoman})` : '');
+
+  return {
+    rootName,
+    quality,
+    shortLabel,
+    fullLabel,
+    degreeRoman: degRoman,
+  };
+}
+
+/**
+ * Détermine en temps réel la note la plus aiguë active et l'accord en cours à l'instant u.
+ * @param {Object} score
+ * @param {number} u - Position temporelle en unités
+ */
+export function getActivePlaybackInfo(score, u) {
+  if (!score || !score.measures || score.measures.length === 0) {
+    return { topNote: '—', chord: '—', chordShort: '—', measureLabel: '—', hasNote: false };
+  }
+
+  const mLen = score.meter.measureLen;
+  const clampedU = Math.max(0, Math.min(u, score.totalUnits - 0.001));
+  const mIdx = Math.max(0, Math.min(score.measures.length - 1, Math.floor(clampedU / mLen)));
+  const m = score.measures[mIdx];
+  const posInM = clampedU - mIdx * mLen;
+
+  // 1. Recherche de l'accord en cours dans la mesure
+  const slot = score.slots?.find((s) => s.m === mIdx && posInM >= s.start && posInM < s.start + s.len)
+    ?? score.slots?.findLast((s) => s.m === mIdx)
+    ?? score.slots?.[score.slots.length - 1];
+  const chordInfo = describeChord(slot, score.key, score.scale);
+
+  // 2. Recherche de toutes les notes actives à cet instant précis
+  const activeNotes = [];
+  if (m) {
+    for (const staff of [m.treble, m.bass]) {
+      if (!staff) continue;
+      for (const ev of staff) {
+        if (ev.rest) continue;
+        if (posInM >= ev.start && posInM < ev.start + ev.dur) {
+          for (const n of ev.notes) {
+            activeNotes.push(n);
+          }
+        }
+      }
+    }
+  }
+
+  let topNoteLabel = '—';
+  let topNoteMidi = null;
+
+  if (activeNotes.length > 0) {
+    const topNote = activeNotes.reduce((max, n) => (n.midi > max.midi ? n : max), activeNotes[0]);
+    const letter = letterOf(topNote.D);
+    const octave = octaveOf(topNote.D);
+    const name = frNoteName(letter, topNote.alter);
+    topNoteLabel = `${name} ${octave}`;
+    topNoteMidi = topNote.midi;
+  }
+
+  return {
+    measureIndex: mIdx,
+    measureLabel: `${mIdx + 1} / ${score.measures.length}`,
+    topNote: topNoteLabel,
+    topNoteMidi,
+    chord: chordInfo.fullLabel,
+    chordShort: chordInfo.shortLabel,
+    hasNote: activeNotes.length > 0,
+  };
+}

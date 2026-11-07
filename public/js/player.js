@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────
-//  Séquenceur : lecture de la partition (synthé ou MIDI)
+//  Séquenceur : lecture de la partition (synthé piano ou MIDI)
 // ─────────────────────────────────────────────────────────────
 //
 // Planification « à anticipation » : toutes les 25 ms on programme les

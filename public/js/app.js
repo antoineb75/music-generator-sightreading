@@ -2,7 +2,7 @@
 //  Application principale : coordination UI, Moteur, Audio & Rendu
 // ─────────────────────────────────────────────────────────────
 
-import { KEYS, getKey, MINOR_TYPE_LABELS, PIANO_NOTES, noteToD, frNoteLabel, analyzeScoreAmbitus } from './theory.js';
+import { KEYS, getKey, MINOR_TYPE_LABELS, PIANO_NOTES, noteToD, frNoteLabel, analyzeScoreAmbitus, getActivePlaybackInfo } from './theory.js';
 import { generateScore, LEVEL_LABELS, HAND_LABELS, ENRICHED_LABELS, tempoItalianName } from './generator.js';
 import { newSeed } from './rng.js';
 import { ScoreRenderer } from './renderer.js';
@@ -52,6 +52,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   const badgeBpm = document.getElementById('badge-bpm');
   const selectOutput = document.getElementById('select-output');
   const selectMidiDevice = document.getElementById('select-midi-device');
+
+  const checkLiveHints = document.getElementById('check-live-hints');
+  const checkParamLiveHints = document.getElementById('check-param-live-hints');
+  const liveBanner = document.getElementById('live-playback-banner');
+  const liveTopNoteVal = document.getElementById('live-top-note-val');
+  const liveChordVal = document.getElementById('live-chord-val');
+  const liveMeasureVal = document.getElementById('live-measure-val');
 
   const btnPrint = document.getElementById('btn-print');
   const btnDownloadMidi = document.getElementById('btn-download-midi');
@@ -113,6 +120,32 @@ document.addEventListener('DOMContentLoaded', async () => {
   const midi = new MidiOut();
   let currentScore = null;
 
+  function updateLivePlaybackBanner(u) {
+    if (!settings.liveHints || !currentScore) return;
+    const info = getActivePlaybackInfo(currentScore, u);
+    if (liveTopNoteVal) liveTopNoteVal.textContent = info.topNote;
+    if (liveChordVal) liveChordVal.textContent = info.chord;
+    if (liveMeasureVal) liveMeasureVal.textContent = info.measureLabel;
+  }
+
+  function updateLiveBannerVisibility() {
+    const isPlayingOrPaused = player.state === 'playing' || player.state === 'paused';
+    if (settings.liveHints && isPlayingOrPaused) {
+      if (liveBanner) liveBanner.style.display = 'flex';
+      updateLivePlaybackBanner(player.posU);
+    } else {
+      if (liveBanner) liveBanner.style.display = 'none';
+    }
+  }
+
+  function setLiveHints(enabled) {
+    settings.liveHints = !!enabled;
+    if (checkLiveHints) checkLiveHints.checked = settings.liveHints;
+    if (checkParamLiveHints) checkParamLiveHints.checked = settings.liveHints;
+    updateLiveBannerVisibility();
+    saveSettings(settings);
+  }
+
   const renderer = new ScoreRenderer(scoreContainer, {
     onNoteClick: (evId) => {
       // Écoute ponctuelle d'une note en cliquant dessus
@@ -123,6 +156,19 @@ document.addEventListener('DOMContentLoaded', async () => {
       synth.ensure().then(() => {
         ev.notes.forEach((n) => synth.playNote(n.midi, synth.now, 0.7, 85));
       });
+
+      if (settings.liveHints) {
+        const mLen = currentScore.meter.measureLen;
+        const mIdx = currentScore.measures.findIndex((m) =>
+          [m.treble, m.bass].filter(Boolean).flat().some((e) => e.id === evId)
+        );
+        if (mIdx >= 0) {
+          const u = mIdx * mLen + ev.start;
+          updateLivePlaybackBanner(u);
+          if (liveBanner) liveBanner.style.display = 'flex';
+        }
+      }
+
       renderer.highlight(evId, true);
       setTimeout(() => renderer.highlight(evId, false), 400);
     },
@@ -137,8 +183,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (!currentScore) return;
       const mIdx = Math.floor(u / currentScore.meter.measureLen);
       renderer.followMeasure(mIdx);
+      if (settings.liveHints) {
+        updateLivePlaybackBanner(u);
+      }
     },
     onStateChange: (state) => {
+      updateLiveBannerVisibility();
       if (state === 'playing') {
         iconPlay.textContent = '⏸';
         labelPlay.textContent = 'Pause';
@@ -175,6 +225,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     const itName = tempoItalianName(settings.bpm || 90);
     badgeBpm.textContent = `${settings.bpm || 90} BPM (${itName})`;
     checkMetronome.checked = !!settings.metronome;
+    if (checkLiveHints) checkLiveHints.checked = !!settings.liveHints;
+    if (checkParamLiveHints) checkParamLiveHints.checked = !!settings.liveHints;
+    updateLiveBannerVisibility();
     selectOutput.value = settings.output || 'synth';
 
     rndKey.checked = !!settings.random.key;
@@ -229,6 +282,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     settings.maxNote = selectMaxNote.value;
     settings.bpm = parseInt(inputBpm.value, 10);
     settings.metronome = checkMetronome.checked;
+    settings.liveHints = !!checkLiveHints?.checked;
     settings.output = selectOutput.value;
 
     settings.random = {
@@ -304,7 +358,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   function updateOutputVisibility() {
     const isMidi = selectOutput.value === 'midi';
     selectMidiDevice.style.display = isMidi ? 'inline-block' : 'none';
-    player.setOutput(isMidi ? 'midi' : 'synth');
+    player.setOutput(selectOutput.value);
   }
 
   // ── Génération et Rendu ────────────────────────────────────
@@ -398,6 +452,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   checkMetronome.addEventListener('change', () => {
     player.metronome = checkMetronome.checked;
     readSettingsFromUI();
+  });
+
+  checkLiveHints?.addEventListener('change', () => {
+    setLiveHints(checkLiveHints.checked);
+  });
+
+  checkParamLiveHints?.addEventListener('change', () => {
+    setLiveHints(checkParamLiveHints.checked);
   });
 
   [rndKey, rndMinorType, rndTimeSig, rndMeasures, rndLevel, rndHands, rndEnriched, rndMinNote, rndMaxNote].forEach((cb) => {

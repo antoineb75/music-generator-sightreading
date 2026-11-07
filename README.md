@@ -54,7 +54,15 @@ Application web pédagogique pour professeurs et élèves de musique permettant 
    - Défilement automatique vers le système (la ligne) en cours de lecture.
    - Possibilité de cliquer sur n'importe quelle note de la partition pour l'écouter.
 
-8. **Affichage adaptatif (PC / Téléphone)** :
+8. **Aide à la lecture en direct (Note la plus aiguë & Accord en cours)** :
+   - Option activable d'un clic (barre de transport ou panneau de réglages) « 🎯 Note & Accord ».
+   - Affiche en grand, en temps réel et synchronisé avec la lecture :
+     - Le **nom de la note la plus aiguë** qui sonne à chaque instant (ex: *Sol 4*, *Mi 5*, *Do 3*).
+     - Le **nom complet et le degré de l'accord** en cours dans la mesure (ex: *Do majeur (I)*, *Sol 7 (V)*, *Ré mineur (ii)*, *La mineur (vi)*).
+     - Le numéro de la mesure en cours.
+   - Idéal pour les élèves et professeurs lors du déchiffrage et de l'analyse harmonique.
+
+9. **Affichage adaptatif (PC / Téléphone)** :
    - Gravure vectorielle SVG propulsée par VexFlow.
    - La partition recalcule dynamiquement le nombre de mesures par portée et l'échelle selon la largeur de votre écran (PC, tablette ou smartphone).
    - Panneau de réglages repliable d'un clic pour maximiser l'espace de lecture.

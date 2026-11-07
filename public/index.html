@@ -173,6 +173,14 @@
           </div>
           <select id="select-max-note" class="select-input" title="Note la plus aiguë que la partition peut atteindre"></select>
         </div>
+
+        <!-- 10. Aide à la lecture : Note la plus aiguë et Accord en direct -->
+        <div class="param-group" style="grid-column: 1 / -1;">
+          <label class="live-hints-label" title="Affiche au-dessus de la partition le nom de la note la plus aiguë et le nom de l'accord en cours pendant la lecture">
+            <input type="checkbox" id="check-param-live-hints">
+            <span>🎯 <strong>Afficher la note la plus aiguë et l'accord en cours pendant la lecture</strong></span>
+          </label>
+        </div>
       </div>
     </section>
 
@@ -197,6 +205,11 @@
         <!-- Métronome -->
         <label class="metronome-toggle" title="Activer / désactiver le clic du métronome">
           <input type="checkbox" id="check-metronome"> <span>⏱️ Clic</span>
+        </label>
+
+        <!-- Affichage en direct Note aiguë & Accord -->
+        <label class="live-hints-toggle" title="Afficher en direct le nom de la note la plus aiguë et le nom de l'accord en cours pendant la lecture">
+          <input type="checkbox" id="check-live-hints"> <span>🎯 Note & Accord</span>
         </label>
       </div>
 
@@ -242,6 +255,33 @@
 
       <!-- Composant visuel d'ambitus adaptatif -->
       <div id="ambitus-card" class="ambitus-card" aria-label="Ambitus et étendue des notes du morceau"></div>
+
+      <!-- Bannière d'affichage en direct de la note la plus aiguë et de l'accord -->
+      <div id="live-playback-banner" class="live-playback-banner no-print" style="display: none;" aria-live="polite">
+        <div class="live-hint-card live-hint-top-note">
+          <div class="live-hint-meta">
+            <span class="live-hint-icon">🎵</span>
+            <span class="live-hint-title">Note la plus aiguë</span>
+          </div>
+          <div id="live-top-note-val" class="live-hint-badge live-badge-note">—</div>
+        </div>
+
+        <div class="live-hint-card live-hint-chord">
+          <div class="live-hint-meta">
+            <span class="live-hint-icon">🎹</span>
+            <span class="live-hint-title">Accord en cours</span>
+          </div>
+          <div id="live-chord-val" class="live-hint-badge live-badge-chord">—</div>
+        </div>
+
+        <div class="live-hint-card live-hint-measure">
+          <div class="live-hint-meta">
+            <span class="live-hint-icon">📏</span>
+            <span class="live-hint-title">Position</span>
+          </div>
+          <div id="live-measure-val" class="live-hint-badge live-badge-measure">—</div>
+        </div>
+      </div>
 
       <!-- Conteneur SVG VexFlow -->
       <div id="score-container" class="score-container"></div>
