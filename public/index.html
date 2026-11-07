@@ -151,6 +151,28 @@
             <option value="none">Désactivé (Triades simples uniquement)</option>
           </select>
         </div>
+
+        <!-- 8. Note la plus basse -->
+        <div class="param-group">
+          <div class="param-label-row">
+            <label for="select-min-note">Note la plus basse</label>
+            <label class="random-checkbox-label" title="Sélectionner aléatoirement la note minimale">
+              <input type="checkbox" id="rnd-min-note"> 🎲 Aléa
+            </label>
+          </div>
+          <select id="select-min-note" class="select-input" title="Note la plus grave que la partition peut atteindre"></select>
+        </div>
+
+        <!-- 9. Note la plus haute -->
+        <div class="param-group">
+          <div class="param-label-row">
+            <label for="select-max-note">Note la plus haute</label>
+            <label class="random-checkbox-label" title="Sélectionner aléatoirement la note maximale">
+              <input type="checkbox" id="rnd-max-note"> 🎲 Aléa
+            </label>
+          </div>
+          <select id="select-max-note" class="select-input" title="Note la plus aiguë que la partition peut atteindre"></select>
+        </div>
       </div>
     </section>
 
@@ -217,6 +239,9 @@
           💡 <em>Les notes jouées s'illuminent en direct. Cliquez sur une note pour écouter.</em>
         </div>
       </div>
+
+      <!-- Composant visuel d'ambitus adaptatif -->
+      <div id="ambitus-card" class="ambitus-card" aria-label="Ambitus et étendue des notes du morceau"></div>
 
       <!-- Conteneur SVG VexFlow -->
       <div id="score-container" class="score-container"></div>

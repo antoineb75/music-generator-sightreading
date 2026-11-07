@@ -2,10 +2,11 @@
 //  Application principale : coordination UI, Moteur, Audio & Rendu
 // ─────────────────────────────────────────────────────────────
 
-import { KEYS, getKey, MINOR_TYPE_LABELS } from './theory.js';
+import { KEYS, getKey, MINOR_TYPE_LABELS, PIANO_NOTES, noteToD, frNoteLabel, analyzeScoreAmbitus } from './theory.js';
 import { generateScore, LEVEL_LABELS, HAND_LABELS, ENRICHED_LABELS, tempoItalianName } from './generator.js';
 import { newSeed } from './rng.js';
 import { ScoreRenderer } from './renderer.js';
+import { updateAmbitusDisplay } from './ambitus-ribbon.js';
 import { PianoSynth } from './piano-synth.js';
 import { MidiOut } from './midi.js';
 import { Player } from './player.js';
@@ -28,6 +29,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const selectLevel = document.getElementById('select-level');
   const selectHands = document.getElementById('select-hands');
   const selectEnriched = document.getElementById('select-enriched');
+  const selectMinNote = document.getElementById('select-min-note');
+  const selectMaxNote = document.getElementById('select-max-note');
 
   const rndKey = document.getElementById('rnd-key');
   const rndMinorType = document.getElementById('rnd-minor-type');
@@ -36,6 +39,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   const rndLevel = document.getElementById('rnd-level');
   const rndHands = document.getElementById('rnd-hands');
   const rndEnriched = document.getElementById('rnd-enriched');
+  const rndMinNote = document.getElementById('rnd-min-note');
+  const rndMaxNote = document.getElementById('rnd-max-note');
 
   const btnGenerate = document.getElementById('btn-generate');
   const btnPlay = document.getElementById('btn-play');
@@ -55,6 +60,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const scoreContainer = document.getElementById('score-container');
   const scoreTitle = document.getElementById('score-title');
   const scoreDetails = document.getElementById('score-details');
+  const ambitusCard = document.getElementById('ambitus-card');
 
   // ── Remplissage des tonalités ─────────────────────────────
   const majorGroup = document.createElement('optgroup');
@@ -71,6 +77,36 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
   selectKey.appendChild(majorGroup);
   selectKey.appendChild(minorGroup);
+
+  // ── Remplissage des notes d'ambitus (min & max) ───────────
+  const OCTAVE_LABELS = {
+    1: 'Octave 1 (Grave)',
+    2: 'Octave 2 (Basse standard)',
+    3: 'Octave 3 (Médium grave)',
+    4: 'Octave 4 (Médium / Clé de Sol)',
+    5: 'Octave 5 (Aigu)',
+    6: 'Octave 6 (Sur-aigu)',
+    7: 'Octave 7',
+  };
+
+  function populateNoteSelect(selectEl) {
+    selectEl.innerHTML = '';
+    const groups = {};
+    for (let oct = 1; oct <= 7; oct++) {
+      const g = document.createElement('optgroup');
+      g.label = OCTAVE_LABELS[oct] || `Octave ${oct}`;
+      groups[oct] = g;
+      selectEl.appendChild(g);
+    }
+    PIANO_NOTES.forEach((n) => {
+      const opt = document.createElement('option');
+      opt.value = n.id;
+      opt.textContent = n.label;
+      if (groups[n.octave]) groups[n.octave].appendChild(opt);
+    });
+  }
+  populateNoteSelect(selectMinNote);
+  populateNoteSelect(selectMaxNote);
 
   // ── Initialisation des modules ────────────────────────────
   const synth = new PianoSynth();
@@ -133,6 +169,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     selectLevel.value = settings.level || 'debutant';
     selectHands.value = settings.hands || 'both';
     selectEnriched.value = settings.enrichedChords || 'auto';
+    selectMinNote.value = settings.minNote || 'C2';
+    selectMaxNote.value = settings.maxNote || 'C6';
     inputBpm.value = settings.bpm || 90;
     const itName = tempoItalianName(settings.bpm || 90);
     badgeBpm.textContent = `${settings.bpm || 90} BPM (${itName})`;
@@ -146,6 +184,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     rndLevel.checked = !!settings.random.level;
     rndHands.checked = !!settings.random.hands;
     rndEnriched.checked = !!settings.random.enrichedChords;
+    rndMinNote.checked = !!settings.random.minNote;
+    rndMaxNote.checked = !!settings.random.maxNote;
 
     updateMinorVisibility();
     updateRandomDisableStates();
@@ -164,7 +204,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     saveSettings(settings);
   }
 
+  function ensureNoteRangeOrder(changedSource = 'min') {
+    const minD = noteToD(selectMinNote.value);
+    const maxD = noteToD(selectMaxNote.value);
+    if (minD > maxD) {
+      if (changedSource === 'min') {
+        selectMaxNote.value = selectMinNote.value;
+      } else {
+        selectMinNote.value = selectMaxNote.value;
+      }
+    }
+  }
+
   function readSettingsFromUI() {
+    ensureNoteRangeOrder();
     settings.key = selectKey.value;
     settings.minorType = selectMinorType.value;
     settings.timeSignature = selectTimeSig.value;
@@ -172,6 +225,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     settings.level = selectLevel.value;
     settings.hands = selectHands.value;
     settings.enrichedChords = selectEnriched.value;
+    settings.minNote = selectMinNote.value;
+    settings.maxNote = selectMaxNote.value;
     settings.bpm = parseInt(inputBpm.value, 10);
     settings.metronome = checkMetronome.checked;
     settings.output = selectOutput.value;
@@ -184,6 +239,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       level: rndLevel.checked,
       hands: rndHands.checked,
       enrichedChords: rndEnriched.checked,
+      minNote: rndMinNote.checked,
+      maxNote: rndMaxNote.checked,
     };
     saveSettings(settings);
   }
@@ -202,6 +259,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     selectLevel.disabled = rndLevel.checked;
     selectHands.disabled = rndHands.checked;
     selectEnriched.disabled = rndEnriched.checked;
+    selectMinNote.disabled = rndMinNote.checked;
+    selectMaxNote.disabled = rndMaxNote.checked;
   }
 
   // ── Gestion de la sortie MIDI ──────────────────────────────
@@ -278,6 +337,10 @@ document.addEventListener('DOMContentLoaded', async () => {
           ? `Main gauche seule (${extLabel})`
           : 'Désactivé (triades)';
 
+    // Analyse précise de l'ambitus réel utilisé
+    const ambitus = analyzeScoreAmbitus(score);
+    updateAmbitusDisplay(ambitusCard, ambitus, p);
+
     scoreDetails.innerHTML = `
       <span>Tonalité : <strong>${score.key.name}</strong></span>
       <span>•</span>
@@ -290,6 +353,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       <span>Niveau : <strong>${LEVEL_LABELS[p.level]}</strong></span>
       <span>•</span>
       <span>Mains : <strong>${HAND_LABELS[p.hands]}</strong></span>
+      <span>•</span>
+      <span>Ambitus : <strong>${ambitus.minFr} (${ambitus.minNote}) → ${ambitus.maxFr} (${ambitus.maxNote})</strong> (${ambitus.intervalLabel})</span>
       <span>•</span>
       <span>Accords enrichis : <strong>${enrichedDesc}</strong></span>
     `;
@@ -311,6 +376,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
   });
 
+  selectMinNote.addEventListener('change', () => {
+    ensureNoteRangeOrder('min');
+    readSettingsFromUI();
+  });
+
+  selectMaxNote.addEventListener('change', () => {
+    ensureNoteRangeOrder('max');
+    readSettingsFromUI();
+  });
+
   inputMeasures.addEventListener('input', () => {
     badgeMeasures.textContent = inputMeasures.value;
     readSettingsFromUI();
@@ -325,7 +400,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     readSettingsFromUI();
   });
 
-  [rndKey, rndMinorType, rndTimeSig, rndMeasures, rndLevel, rndHands, rndEnriched].forEach((cb) => {
+  [rndKey, rndMinorType, rndTimeSig, rndMeasures, rndLevel, rndHands, rndEnriched, rndMinNote, rndMaxNote].forEach((cb) => {
     cb.addEventListener('change', () => {
       readSettingsFromUI();
       updateRandomDisableStates();

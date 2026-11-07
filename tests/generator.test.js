@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateScore, TIME_SIGNATURES, LEVELS, HANDS } from '../public/js/generator.js';
-import { KEYS, MINOR_TYPES, buildScale, getKey, degreeOf } from '../public/js/theory.js';
+import { KEYS, MINOR_TYPES, buildScale, getKey, degreeOf, noteToD, analyzeScoreAmbitus, formatInterval } from '../public/js/theory.js';
+import { buildAmbitusKeyboardSvg } from '../public/js/ambitus-ribbon.js';
 import { midiFileBytes } from '../public/js/midi-file.js';
 
 const baseSettings = (over = {}) => ({
@@ -129,4 +130,134 @@ test('fichier MIDI valide', () => {
   assert.equal(String.fromCharCode(...bytes.slice(0, 4)), 'MThd');
   assert.equal(bytes[9], 1); // format 1
   assert.equal(bytes[11], 3); // 3 pistes
+});
+
+test('ambitus strict : respect de la note la plus basse et de la note la plus haute', () => {
+  const testCases = [
+    { minNote: 'C3', maxNote: 'C5', hands: 'both', key: 'C', level: 'intermediaire' },
+    { minNote: 'E2', maxNote: 'G4', hands: 'left', key: 'Am', level: 'debutant' },
+    { minNote: 'G3', maxNote: 'E5', hands: 'right', key: 'F', level: 'initiation' },
+    { minNote: 'A1', maxNote: 'C6', hands: 'both', key: 'G', level: 'avance' },
+    { minNote: 'C4', maxNote: 'C5', hands: 'right', key: 'D', level: 'expert' }, // Ambitus très serré (1 octave)
+  ];
+
+  for (let seed = 1; seed <= 30; seed++) {
+    for (const tc of testCases) {
+      const score = generateScore(baseSettings({ ...tc }), seed);
+      const minD = noteToD(score.params.minNote);
+      const maxD = noteToD(score.params.maxNote);
+
+      let trebleHasMax = false;
+      let trebleHasMin = false;
+      let bassHasMax = false;
+      let bassHasMin = false;
+
+      for (const m of score.measures) {
+        if (m.treble) {
+          for (const ev of m.treble) {
+            if (ev.rest) continue;
+            for (const n of ev.notes) {
+              assert.ok(n.D >= minD && n.D <= maxD, `Treble note ${n.D} hors limites [${minD}, ${maxD}]`);
+              if (n.D === maxD) trebleHasMax = true;
+              if (n.D === minD) trebleHasMin = true;
+            }
+          }
+        }
+        if (m.bass) {
+          for (const ev of m.bass) {
+            if (ev.rest) continue;
+            for (const n of ev.notes) {
+              assert.ok(n.D >= minD && n.D <= maxD, `Bass note ${n.D} hors limites [${minD}, ${maxD}]`);
+              if (n.D === minD) bassHasMin = true;
+              if (n.D === maxD) bassHasMax = true;
+            }
+          }
+        }
+      }
+
+      if (tc.hands === 'both') {
+        assert.ok(bassHasMin, `La main gauche doit contenir la note la plus basse (${tc.minNote}) pour graine ${seed}`);
+        assert.ok(trebleHasMax, `La main droite doit contenir la note la plus haute (${tc.maxNote}) pour graine ${seed}`);
+      } else if (tc.hands === 'right') {
+        assert.ok(trebleHasMax, `La main droite doit contenir la note la plus haute (${tc.maxNote}) pour graine ${seed}`);
+        assert.ok(trebleHasMin, `La main droite seule doit contenir la note la plus basse (${tc.minNote}) pour graine ${seed}`);
+      } else if (tc.hands === 'left') {
+        assert.ok(bassHasMin, `La main gauche doit contenir la note la plus basse (${tc.minNote}) pour graine ${seed}`);
+        assert.ok(bassHasMax, `La main gauche seule doit contenir la note la plus haute (${tc.maxNote}) pour graine ${seed}`);
+      }
+    }
+  }
+});
+
+test('jouabilité pianistique : écartement des doigts et voicings réalisables', () => {
+  for (let seed = 1; seed <= 50; seed++) {
+    for (const level of LEVELS) {
+      for (const hands of HANDS) {
+        const score = generateScore(baseSettings({ level, hands, enrichedChords: 'both' }), seed);
+        for (const m of score.measures) {
+          for (const staff of [m.treble, m.bass]) {
+            if (!staff) continue;
+            for (const ev of staff) {
+              if (ev.rest || ev.notes.length <= 1) continue;
+              // Tout accord plaqué à une main doit avoir un écartement max <= 8 degrés (une octave)
+              const minChordD = ev.notes[0].D;
+              const maxChordD = ev.notes.at(-1).D;
+              assert.ok(
+                maxChordD - minChordD <= 8,
+                `Accord injouable d'une seule main : écart de ${maxChordD - minChordD} degrés (${minChordD} -> ${maxChordD})`
+              );
+            }
+          }
+        }
+      }
+    }
+  }
+});
+
+test("analyse de l'ambitus et composant d'affichage", () => {
+  assert.equal(formatInterval(0), 'unisson');
+  assert.equal(formatInterval(12), '1 octave');
+  assert.equal(formatInterval(24), '2 octaves');
+  assert.equal(formatInterval(48), '4 octaves');
+  assert.equal(formatInterval(7), 'quinte');
+  assert.equal(formatInterval(19), '1 octave et quinte');
+
+  const score = generateScore(baseSettings({ minNote: 'C2', maxNote: 'C6', hands: 'both' }), 42);
+  const amb = analyzeScoreAmbitus(score);
+
+  assert.equal(amb.minNote, 'C2');
+  assert.equal(amb.maxNote, 'C6');
+  assert.ok(amb.totalSemitones >= 48);
+  assert.ok(amb.treble);
+  assert.ok(amb.bass);
+  assert.equal(amb.bass.minNote, 'C2');
+  assert.equal(amb.treble.maxNote, 'C6');
+
+  const svg = buildAmbitusKeyboardSvg(amb, 'both');
+  assert.ok(svg.startsWith('<svg'));
+  assert.ok(svg.endsWith('</svg>'));
+  assert.ok(svg.includes('ambitus-keyboard-svg'));
+  assert.ok(svg.includes('key-white'));
+  assert.ok(svg.includes('key-black'));
+});
+
+test('ambitus extrême : C1 (extrême grave) et C7 (extrême aigu) sans dépassement', () => {
+  for (let seed = 100; seed <= 120; seed++) {
+    const score = generateScore(baseSettings({ minNote: 'C1', maxNote: 'C7', hands: 'both', measures: 8 }), seed);
+    const amb = analyzeScoreAmbitus(score);
+    assert.equal(amb.minNote, 'C1');
+    assert.equal(amb.maxNote, 'C7');
+    assert.equal(amb.bass.minNote, 'C1');
+    assert.equal(amb.treble.maxNote, 'C7');
+    assert.ok(amb.totalSemitones >= 72); // 6 octaves complètes
+
+    for (const m of score.measures) {
+      for (const ev of [...(m.treble || []), ...(m.bass || [])]) {
+        if (ev.rest) continue;
+        for (const n of ev.notes) {
+          assert.ok(n.D >= noteToD('C1') && n.D <= noteToD('C7'), `Note hors bornes : ${n.D}`);
+        }
+      }
+    }
+  }
 });

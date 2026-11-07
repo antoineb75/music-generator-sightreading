@@ -139,3 +139,178 @@ export function lowestDWithLetter(letter, min) {
   if (D < min) D += 7;
   return D;
 }
+
+// ── Liste des notes du piano pour l'ambitus (C1 … C7) ───────
+
+export const PIANO_NOTES = [];
+for (let oct = 1; oct <= 7; oct++) {
+  for (let l = 0; l < 7; l++) {
+    const id = `${LETTERS[l]}${oct}`;
+    const D = oct * 7 + l;
+    const midi = toMidi(D, 0);
+    const frName = FR_LETTERS[l] + oct;
+    const isMiddleC = (oct === 4 && l === 0);
+    const label = `${frName} (${id}${isMiddleC ? ' - Do central' : ''})`;
+    PIANO_NOTES.push({ id, letter: l, octave: oct, D, midi, frName, label });
+    if (oct === 7 && l === 0) break;
+  }
+}
+
+export function noteToD(noteId) {
+  const note = PIANO_NOTES.find((n) => n.id === noteId);
+  if (note) return note.D;
+  const letter = LETTERS.indexOf(noteId[0]);
+  const oct = parseInt(noteId.slice(1), 10);
+  return oct * 7 + (letter >= 0 ? letter : 0);
+}
+
+export function dToNote(D) {
+  const l = letterOf(D);
+  const oct = octaveOf(D);
+  return `${LETTERS[l]}${oct}`;
+}
+
+export function frNoteLabel(noteId) {
+  const note = PIANO_NOTES.find((n) => n.id === noteId);
+  return note ? note.frName : noteId;
+}
+
+/** Formate un intervalle musical en français (ex. « 2 octaves et une quinte »). */
+export function formatInterval(semitones) {
+  if (semitones === 0) return 'unisson';
+  const oct = Math.floor(semitones / 12);
+  const rem = semitones % 12;
+  const REM_NAMES = {
+    0: '',
+    1: 'seconde mineure',
+    2: 'seconde majeure',
+    3: 'tierce mineure',
+    4: 'tierce majeure',
+    5: 'quarte',
+    6: 'triton',
+    7: 'quinte',
+    8: 'sixte mineure',
+    9: 'sixte majeure',
+    10: 'septième mineure',
+    11: 'septième majeure',
+  };
+  if (oct === 0) return REM_NAMES[rem] || `${semitones} demi-tons`;
+  const octStr = oct === 1 ? '1 octave' : `${oct} octaves`;
+  if (rem === 0) return octStr;
+  return `${octStr} et ${REM_NAMES[rem] || `${rem} demi-tons`}`;
+}
+
+/**
+ * Analyse l'ambitus réel utilisé par chaque main et au global pour une partition donnée.
+ */
+export function analyzeScoreAmbitus(score) {
+  let minTrebleD = Infinity;
+  let maxTrebleD = -Infinity;
+  let minTrebleAlter = 0;
+  let maxTrebleAlter = 0;
+
+  let minBassD = Infinity;
+  let maxBassD = -Infinity;
+  let minBassAlter = 0;
+  let maxBassAlter = 0;
+
+  let minD = Infinity;
+  let maxD = -Infinity;
+  let minAlter = 0;
+  let maxAlter = 0;
+
+  score.measures.forEach((m) => {
+    if (m.treble) {
+      m.treble.forEach((ev) => {
+        if (!ev.rest && ev.notes) {
+          ev.notes.forEach((n) => {
+            if (n.D < minTrebleD) { minTrebleD = n.D; minTrebleAlter = n.alter ?? 0; }
+            if (n.D > maxTrebleD) { maxTrebleD = n.D; maxTrebleAlter = n.alter ?? 0; }
+            if (n.D < minD) { minD = n.D; minAlter = n.alter ?? 0; }
+            if (n.D > maxD) { maxD = n.D; maxAlter = n.alter ?? 0; }
+          });
+        }
+      });
+    }
+    if (m.bass) {
+      m.bass.forEach((ev) => {
+        if (!ev.rest && ev.notes) {
+          ev.notes.forEach((n) => {
+            if (n.D < minBassD) { minBassD = n.D; minBassAlter = n.alter ?? 0; }
+            if (n.D > maxBassD) { maxBassD = n.D; maxBassAlter = n.alter ?? 0; }
+            if (n.D < minD) { minD = n.D; minAlter = n.alter ?? 0; }
+            if (n.D > maxD) { maxD = n.D; maxAlter = n.alter ?? 0; }
+          });
+        }
+      });
+    }
+  });
+
+  if (minD === Infinity) {
+    minD = score.params.minD ?? 14;
+    maxD = score.params.maxD ?? 42;
+  }
+
+  const minNote = dToNote(minD);
+  const maxNote = dToNote(maxD);
+  const minMidi = toMidi(minD, minAlter);
+  const maxMidi = toMidi(maxD, maxAlter);
+  const totalSemitones = Math.max(0, maxMidi - minMidi);
+
+  const res = {
+    minD,
+    maxD,
+    minNote,
+    maxNote,
+    minFr: frNoteLabel(minNote),
+    maxFr: frNoteLabel(maxNote),
+    minMidi,
+    maxMidi,
+    totalSemitones,
+    intervalLabel: formatInterval(totalSemitones),
+    treble: null,
+    bass: null,
+  };
+
+  if (minTrebleD !== Infinity) {
+    const tMinNote = dToNote(minTrebleD);
+    const tMaxNote = dToNote(maxTrebleD);
+    const tMinMidi = toMidi(minTrebleD, minTrebleAlter);
+    const tMaxMidi = toMidi(maxTrebleD, maxTrebleAlter);
+    const st = Math.max(0, tMaxMidi - tMinMidi);
+    res.treble = {
+      minD: minTrebleD,
+      maxD: maxTrebleD,
+      minNote: tMinNote,
+      maxNote: tMaxNote,
+      minFr: frNoteLabel(tMinNote),
+      maxFr: frNoteLabel(tMaxNote),
+      minMidi: tMinMidi,
+      maxMidi: tMaxMidi,
+      semitones: st,
+      intervalLabel: formatInterval(st),
+    };
+  }
+
+  if (minBassD !== Infinity) {
+    const bMinNote = dToNote(minBassD);
+    const bMaxNote = dToNote(maxBassD);
+    const bMinMidi = toMidi(minBassD, minBassAlter);
+    const bMaxMidi = toMidi(maxBassD, maxBassAlter);
+    const st = Math.max(0, bMaxMidi - bMinMidi);
+    res.bass = {
+      minD: minBassD,
+      maxD: maxBassD,
+      minNote: bMinNote,
+      maxNote: bMaxNote,
+      minFr: frNoteLabel(bMinNote),
+      maxFr: frNoteLabel(bMaxNote),
+      minMidi: bMinMidi,
+      maxMidi: bMaxMidi,
+      semitones: st,
+      intervalLabel: formatInterval(st),
+    };
+  }
+
+  return res;
+}

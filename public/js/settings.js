@@ -13,6 +13,8 @@ export const DEFAULT_SETTINGS = {
   level: 'debutant',
   hands: 'both',
   enrichedChords: 'auto', // 'auto' | 'both' | 'right' | 'left' | 'none'
+  minNote: 'C2',
+  maxNote: 'C6',
   bpm: 90,
   metronome: false,
   output: 'synth', // 'synth' | 'midi'
@@ -25,6 +27,8 @@ export const DEFAULT_SETTINGS = {
     level: false,
     hands: false,
     enrichedChords: false,
+    minNote: false,
+    maxNote: false,
   },
 };
 

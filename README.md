@@ -26,7 +26,8 @@ Application web pédagogique pour professeurs et élèves de musique permettant 
      - *Accords de 7e uniquement* : limitation ciblée aux 7èmes sur les deux mains.
      - *Accords très enrichis 9e / 11e / 13e* : voicings étendus et arpèges amples sur les deux mains.
      - *Désactivé* : accords parfaits et triades simples uniquement.
-   - **Mode Aléatoire (🎲)** : chaque paramètre pédagogique dispose d'une case « Aléa » permettant un tirage au sort automatique à chaque génération (y compris les accords enrichis).
+   - **Ambitus contrôlé (Note la plus basse & Note la plus haute)** : permet de fixer la note la plus grave (de Do1 à Do4) et la note la plus aiguë (de Do3 à Do7) que la partition peut atteindre. Idéal pour adapter l'exercice aux compétences de lecture de l'élève (éviter les lignes supplémentaires) ou au clavier utilisé (49, 61 ou 88 touches).
+   - **Mode Aléatoire (🎲)** : chaque paramètre pédagogique dispose d'une case « Aléa » permettant un tirage au sort automatique à chaque génération (y compris les limites d'ambitus et les accords enrichis).
 
 2. **Curseur de Tempo (BPM) & Métronome en direct** :
    - Le tempo se règle facilement et directement via le curseur de la barre de transport (de 40 à 200 BPM) avec indication des termes italiens usuels (*Largo*, *Adagio*, *Andante*, *Moderato*, *Allegro*, *Presto*). Il est gravé sur la première mesure de la partition et modifiable en direct pendant ou avant la lecture.
@@ -35,26 +36,31 @@ Application web pédagogique pour professeurs et élèves de musique permettant 
 3. **Mémoire automatique des réglages** :
    - Au démarrage, l'application restaure automatiquement vos derniers paramètres et la dernière partition générée via `localStorage`.
 
-3. **Lecture audio réaliste (Piano Web Audio)** :
+4. **Affichage adaptatif à l'ambitus du morceau** :
+   - **Gravure VexFlow dynamique** : adaptation automatique de la marge supérieure (`topPadding`), de l'écartement inter-portées (`interStaveGap`) et de la marge inférieure (`bottomPadding`). Aucune note aiguë ou grave, hampe ou indication de tempo n'est coupée ou écrasée, quelle que soit la tessiture du morceau (de Do1 à Do7).
+   - **Réglette & Clavier d'ambitus interactif** : un mini-clavier visuel situé au-dessus de la partition surligne l'étendue exacte des notes jouées par la main gauche (bleu cyan) et la main droite (rose fuchsia), avec repères d'octaves, Do central et pastilles sur la note minimale et maximale.
+   - **Analyse des intervalles** : indication textuelle précise de l'ambitus en demi-tons et octaves (ex. *4 octaves*, *1 octave et quinte*).
+
+5. **Lecture audio réaliste (Piano Web Audio)** :
    - Synthétiseur de piano physique modélisé avec la **Web Audio API** (sans banques d'échantillons lourdes).
    - Oscillateurs multi-harmoniques avec inharmonicité, filtre dynamique simulant l'étouffoir et réverbération intégrée.
 
-4. **Exécution & Export MIDI** :
+6. **Exécution & Export MIDI** :
    - **Sortie Web MIDI** : envoyez directement les notes vers un piano numérique, clavier maître ou synthétiseur physique connecté en USB/MIDI.
    - **Export `.mid`** : téléchargez la partition au format Standard MIDI File (format 1, 2 pistes pour main droite et main gauche, tempo et armure inclus).
 
-5. **Surlignage visuel interactif** :
+7. **Surlignage visuel interactif** :
    - Pendant la lecture, **la note en cours de jeu s'illumine en direct** sur la portée (rose/ambre lumineux avec halo).
    - Défilement automatique vers le système (la ligne) en cours de lecture.
    - Possibilité de cliquer sur n'importe quelle note de la partition pour l'écouter.
 
-6. **Affichage adaptatif (PC / Téléphone)** :
+8. **Affichage adaptatif (PC / Téléphone)** :
    - Gravure vectorielle SVG propulsée par VexFlow.
    - La partition recalcule dynamiquement le nombre de mesures par portée et l'échelle selon la largeur de votre écran (PC, tablette ou smartphone).
    - Panneau de réglages repliable d'un clic pour maximiser l'espace de lecture.
 
-7. **Impression prête pour les cours (A4)** :
-   - Feuille de styles d'impression dédiée `@media print` masquant toute l'interface pour ne conserver que la partition nette, le titre et les informations de tonalité / mesure sur feuille blanche A4.
+9. **Impression prête pour les cours (A4)** :
+   - Feuille de styles d'impression dédiée `@media print` masquant toute l'interface pour ne conserver que la partition nette, le titre, le cartouche d'ambitus et les informations de tonalité / mesure sur feuille blanche A4.
    - Bouton « 🖨️ Imprimer » en un clic.
 
 ---

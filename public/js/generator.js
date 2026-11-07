@@ -1,15 +1,16 @@
 // ─────────────────────────────────────────────────────────────
-//  Générateur de partitions
+//  Partitio : Générateur musical pianistique algorithmique
+//  Composition harmonique, polyphonique et rythmique adaptée au piano
 // ─────────────────────────────────────────────────────────────
-//
-// Unité de temps interne : la double-croche (1). Noire = 4, blanche = 8…
-// Le modèle produit est indépendant du rendu (VexFlow) et de la lecture.
 
 import { createRng, newSeed } from './rng.js';
 export { newSeed };
 import {
-  KEYS, MINOR_TYPES, getKey, buildScale, degreeOf, toMidi, dOf, lowestDWithLetter, octaveOf,
+  KEYS, MINOR_TYPES, getKey, buildScale, degreeOf, toMidi, dOf, lowestDWithLetter, octaveOf, letterOf,
+  PIANO_NOTES, noteToD, dToNote, frNoteLabel,
 } from './theory.js';
+
+// ── Constantes & Interfaces publiques ────────────────────────
 
 export const TIME_SIGNATURES = ['2/4', '3/4', '4/4', '5/4', '2/2', '3/8', '6/8', '12/8'];
 export const LEVELS = ['initiation', 'debutant', 'intermediaire', 'avance', 'expert'];
@@ -29,19 +30,8 @@ export const ENRICHED_LABELS = {
   right: 'Main droite seule (mélodie harmonisée)',
   left: 'Main gauche seule (accords & voicings)',
   seventh: 'Accords de 7e uniquement',
-  extended: 'Accords très enrichis (9e, 11e, 13e)',
+  extended: 'Accords très enrichis (9e/11e/13e)',
   none: 'Désactivé (triades simples)',
-};
-export const MEASURES_MIN = 1;
-export const MEASURES_MAX = 32;
-
-const RANDOM_MEASURES = [4, 8, 8, 12, 16];
-const RANDOM_BPMS_BY_LEVEL = {
-  initiation: [56, 60, 68, 76],
-  debutant: [68, 76, 84, 92],
-  intermediaire: [80, 88, 96, 108],
-  avance: [96, 108, 116, 126],
-  expert: [116, 126, 138, 152, 168],
 };
 
 export function tempoItalianName(bpm) {
@@ -49,34 +39,55 @@ export function tempoItalianName(bpm) {
   if (bpm < 76) return 'Adagio';
   if (bpm < 108) return 'Andante';
   if (bpm < 120) return 'Moderato';
-  if (bpm < 156) return 'Allegro';
-  if (bpm < 176) return 'Vivace';
+  if (bpm < 168) return 'Allegro';
   return 'Presto';
 }
-const TS_BY_LEVEL = {
-  initiation: ['4/4', '3/4'],
-  debutant: ['2/4', '3/4', '4/4'],
-  intermediaire: ['2/4', '3/4', '4/4', '6/8', '2/2'],
-  avance: ['2/4', '3/4', '4/4', '6/8', '2/2', '3/8', '5/4'],
-  expert: TIME_SIGNATURES,
-};
-const MAX_FIFTHS_BY_LEVEL = {
-  initiation: 1,
-  debutant: 2,
-  intermediaire: 3,
-  avance: 5,
-  expert: 7,
-};
 
 /** Durées représentables par une seule figure (avec point éventuel). */
 const VALID_DURATIONS = [24, 16, 12, 8, 6, 4, 3, 2, 1];
 
-// ── Paramètres ──────────────────────────────────────────────
+const RANDOM_MEASURES = [4, 8, 8, 8, 12, 16];
+const RANDOM_MIN_NOTES_BY_LEVEL = {
+  initiation: ['C3', 'E3', 'G3', 'C4'],
+  debutant: ['C2', 'G2', 'C3'],
+  intermediaire: ['C2', 'G2', 'A2', 'E2'],
+  avance: ['A1', 'C2', 'E2'],
+  expert: ['A1', 'C1', 'E1', 'C2'],
+};
+const RANDOM_MAX_NOTES_BY_LEVEL = {
+  initiation: ['G4', 'A4', 'C5'],
+  debutant: ['C5', 'D5', 'E5'],
+  intermediaire: ['E5', 'G5', 'A5'],
+  avance: ['A5', 'C6', 'D6'],
+  expert: ['C6', 'E6', 'G6'],
+};
+const TS_BY_LEVEL = {
+  initiation: ['4/4', '3/4'],
+  debutant: ['4/4', '3/4', '2/4'],
+  intermediaire: ['4/4', '3/4', '2/4', '6/8', '2/2'],
+  avance: TIME_SIGNATURES,
+  expert: TIME_SIGNATURES,
+};
+const MAX_FIFTHS_BY_LEVEL = {
+  initiation: 1, // Do, Sol, Fa majeurs et La, Mi, Ré mineurs
+  debutant: 2,
+  intermediaire: 4,
+  avance: 7,
+  expert: 7,
+};
+const RANDOM_BPMS_BY_LEVEL = {
+  initiation: [60, 72, 80],
+  debutant: [72, 84, 96],
+  intermediaire: [88, 100, 112, 120],
+  avance: [100, 116, 132, 144],
+  expert: [112, 128, 144, 160],
+};
 
-const clampMeasures = (n) => Math.min(MEASURES_MAX, Math.max(MEASURES_MIN, Math.round(Number(n) || 8)));
+const clampMeasures = (n) => Math.min(32, Math.max(1, Math.round(Number(n) || 8)));
 const clampBpm = (n) => Math.min(240, Math.max(40, Math.round(Number(n) || 90)));
 
-/** Résout les paramètres « aléatoires » en valeurs concrètes. */
+// ── Résolution des paramètres ────────────────────────────────
+
 export function resolveParams(settings, rng) {
   const r = settings.random || {};
   const level = r.level ? rng.pick(LEVELS) : settings.level;
@@ -87,6 +98,24 @@ export function resolveParams(settings, rng) {
   const key = r.key ? rng.pick(KEYS.filter((k) => Math.abs(k.fifths) <= maxFifths)).id : settings.key;
   const minorType = r.minorType ? rng.pick(MINOR_TYPES) : settings.minorType;
   const bpm = r.bpm ? rng.pick(RANDOM_BPMS_BY_LEVEL[level] || RANDOM_BPMS_BY_LEVEL.intermediaire) : clampBpm(settings.bpm);
+
+  let minNote = r.minNote
+    ? rng.pick(RANDOM_MIN_NOTES_BY_LEVEL[level] || ['C2', 'G2', 'C3'])
+    : (settings.minNote || 'C2');
+  let maxNote = r.maxNote
+    ? rng.pick(RANDOM_MAX_NOTES_BY_LEVEL[level] || ['C5', 'G5', 'C6'])
+    : (settings.maxNote || 'C6');
+
+  let minD = noteToD(minNote);
+  let maxD = noteToD(maxNote);
+  if (minD > maxD) {
+    const tmpD = minD; minD = maxD; maxD = tmpD;
+    const tmpNote = minNote; minNote = maxNote; maxNote = tmpNote;
+  }
+  if (maxD - minD < 4) {
+    maxD = minD + 4;
+    maxNote = dToNote(maxD);
+  }
 
   const enrichedChords = r.enrichedChords
     ? rng.pick(ENRICHED_OPTIONS)
@@ -121,7 +150,7 @@ export function resolveParams(settings, rng) {
     enrichLeft = true;
     extensionType = (level === 'expert' || level === 'avance') ? 'extended' : 'seventh';
   } else {
-    // 'auto' : progression graduelle sur les 5 niveaux
+    // 'auto' : progression graduelle selon les 5 niveaux
     if (level === 'initiation') {
       enrichRight = false;
       enrichLeft = false;
@@ -154,6 +183,10 @@ export function resolveParams(settings, rng) {
     key,
     minorType,
     bpm,
+    minNote,
+    maxNote,
+    minD,
+    maxD,
     enrichedChords,
     enrichRight,
     enrichLeft,
@@ -166,111 +199,18 @@ export function meterInfo(ts) {
   const measureLen = (num * 16) / den;
   let beatLen;
   let compound = false;
-  if (den === 8 && num % 3 === 0 && num > 3) { beatLen = 6; compound = true; } // 6/8, 12/8
-  else if (den === 8) beatLen = 2; // 3/8 : temps à la croche
-  else beatLen = 4; // x/4 et 2/2 (rythmes construits à la noire)
+  if (den === 8 && num % 3 === 0 && num > 3) {
+    beatLen = 6;
+    compound = true;
+  } else if (den === 8) {
+    beatLen = 2;
+  } else {
+    beatLen = 4;
+  }
   return { ts, num, den, measureLen, beatLen, compound, beats: measureLen / beatLen };
 }
 
-// ── Rythme ──────────────────────────────────────────────────
-
-// [motif, poids] – un motif remplit exactement un temps.
-const BEAT_PATTERNS = {
-  4: {
-    initiation: [[[4], 1]],
-    debutant: [[[4], 7], [[2, 2], 2]],
-    intermediaire: [[[4], 4], [[2, 2], 4], [[3, 1], 1.2], [[1, 1, 2], 0.8]],
-    avance: [[[4], 2.8], [[2, 2], 3], [[1, 1, 1, 1], 1.8], [[3, 1], 2], [[1, 1, 2], 1.8], [[2, 1, 1], 1.8], [[1, 2, 1], 1]],
-    expert: [[[4], 2], [[2, 2], 2.5], [[1, 1, 1, 1], 3], [[3, 1], 2], [[1, 1, 2], 2.5], [[2, 1, 1], 2.5], [[1, 2, 1], 1.5]],
-  },
-  6: {
-    initiation: [[[6], 4]],
-    debutant: [[[6], 3], [[4, 2], 3]],
-    intermediaire: [[[6], 2], [[4, 2], 3], [[2, 2, 2], 3], [[3, 1, 2], 1]],
-    avance: [[[6], 1.5], [[4, 2], 2], [[2, 2, 2], 3], [[3, 1, 2], 2], [[1, 1, 2, 2], 1.5], [[2, 1, 1, 2], 1]],
-    expert: [[[6], 1], [[4, 2], 2], [[2, 2, 2], 3], [[3, 1, 2], 2.5], [[1, 1, 2, 2], 2.5], [[2, 1, 1, 2], 2], [[2, 2, 1, 1], 2]],
-  },
-  2: {
-    initiation: [[[2], 5]],
-    debutant: [[[2], 5]],
-    intermediaire: [[[2], 3], [[1, 1], 1.5]],
-    avance: [[[2], 2], [[1, 1], 3]],
-    expert: [[[2], 1.5], [[1, 1], 4]],
-  },
-};
-
-const LONG_NOTE_PROB = { initiation: 0.65, debutant: 0.45, intermediaire: 0.30, avance: 0.20, expert: 0.12 };
-const REST_PROB = { initiation: 0, debutant: 0, intermediaire: 0.05, avance: 0.08, expert: 0.12 };
-
-/** Motifs couvrant plusieurs temps, selon la position dans la mesure. */
-function longOptions(meter, level, b, remaining) {
-  const { beatLen, beats } = meter;
-  const opts = [];
-  if (beatLen === 4) {
-    const halfOk = beats % 2 === 0 ? b % 2 === 0 : beats === 3 ? true : b === 0 || b === 3;
-    if (remaining >= 2 && halfOk) {
-      opts.push([[8], 3]);
-      if (level !== 'initiation' && level !== 'debutant') opts.push([[6, 2], 2]);
-    }
-    if (remaining >= 3 && b === 0) opts.push([[12], beats === 3 ? 3 : 1.5]);
-    if (remaining >= 4 && b === 0) opts.push([[16], 1.5]);
-  } else if (beatLen === 6) {
-    if (remaining >= 2 && b % 2 === 0) opts.push([[12], 3]);
-    if (remaining >= 4 && b === 0) opts.push([[24], 1]);
-  } else {
-    if (remaining >= 2 && b <= 1) opts.push([[4], 3]);
-    if (remaining >= 3 && b === 0) opts.push([[6], 2]);
-  }
-  return opts;
-}
-
-function genRhythmSegment(rng, meter, level, beatsCount) {
-  const out = [];
-  let b = 0;
-  while (b < beatsCount) {
-    const longs = longOptions(meter, level, b, beatsCount - b);
-    const pattern = longs.length && rng.chance(LONG_NOTE_PROB[level])
-      ? rng.weighted(longs)
-      : rng.weighted(BEAT_PATTERNS[meter.beatLen][level]);
-    let pos = b * meter.beatLen;
-    for (const dur of pattern) {
-      out.push({ start: pos, dur });
-      pos += dur;
-    }
-    b += pattern.reduce((s, d) => s + d, 0) / meter.beatLen;
-  }
-  return out;
-}
-
-function genMeasureRhythm(rng, meter, level, isLast) {
-  if (!isLast) return genRhythmSegment(rng, meter, level, meter.beats);
-  // Dernière mesure : note finale longue.
-  const L = meter.measureLen;
-  const candidates = VALID_DURATIONS.filter((d) => d <= L && d % meter.beatLen === 0);
-  let finalDur = candidates[0];
-  if (level !== 'initiation' && level !== 'debutant' && meter.beats >= 3 && rng.chance(0.5)) {
-    const shorter = candidates.filter((d) => d < L && d >= L / 2);
-    if (shorter.length) finalDur = shorter[0];
-  }
-  const prefixBeats = (L - finalDur) / meter.beatLen;
-  const prefix = prefixBeats > 0 ? genRhythmSegment(rng, meter, level, prefixBeats) : [];
-  return [...prefix, { start: L - finalDur, dur: finalDur }];
-}
-
-function applyRests(rng, rhythms, level) {
-  const p = REST_PROB[level];
-  if (!p) return;
-  rhythms.forEach((rhythm, m) => {
-    if (m === rhythms.length - 1) return;
-    rhythm.forEach((ev, i) => {
-      if (m === 0 && i === 0) return;
-      const prevRest = i > 0 && rhythm[i - 1].rest;
-      if (!prevRest && [2, 4, 6].includes(ev.dur) && rng.chance(p)) ev.rest = true;
-    });
-  });
-}
-
-/** Décompose une durée en figures simples (pour les notes tenues). */
+/** Décompose une durée en figures simples standard pour VexFlow. */
 function decompose(len) {
   const out = [];
   let rest = len;
@@ -282,86 +222,211 @@ function decompose(len) {
   return out;
 }
 
-// ── Harmonie ────────────────────────────────────────────────
+// ── Rythme pianistique ──────────────────────────────────────
 
-// Enchaînements d'accords (degrés 0 = I … 5 = vi) et poids.
-const TRANSITIONS = {
-  0: [[3, 3], [4, 3], [5, 2], [1, 2], [2, 0.5]],
-  1: [[4, 4], [3, 1]],
-  2: [[5, 2], [3, 2]],
-  3: [[4, 4], [0, 2], [1, 2]],
-  4: [[0, 5], [5, 2], [3, 0.5]],
-  5: [[1, 3], [3, 3], [4, 2]],
+// Motifs de temps (beat patterns) – Chaque motif fait exactement beatLen
+const BEAT_PATTERNS = {
+  4: {
+    initiation: [[[4], 1]],
+    debutant: [
+      [[4], 3],
+      [[2, 2], 2],
+    ],
+    intermediaire: [
+      [[4], 2.5],
+      [[2, 2], 3],
+      [[3, 1], 1],
+    ],
+    avance: [
+      [[4], 2],
+      [[2, 2], 2.5],
+      [[1, 1, 1, 1], 1.5],
+      [[2, 1, 1], 1],
+      [[1, 1, 2], 1],
+      [[3, 1], 1],
+    ],
+    expert: [
+      [[4], 1.5],
+      [[2, 2], 2],
+      [[1, 1, 1, 1], 2.5],
+      [[1, 1, 2], 1.2],
+      [[2, 1, 1], 1.2],
+      [[3, 1], 1],
+    ],
+  },
+  6: {
+    initiation: [[[6], 1]],
+    debutant: [
+      [[6], 2.5],
+      [[4, 2], 2],
+      [[2, 2, 2], 1.5],
+    ],
+    intermediaire: [
+      [[6], 2],
+      [[4, 2], 2.5],
+      [[2, 2, 2], 2.5],
+      [[2, 4], 1],
+    ],
+    avance: [
+      [[4, 2], 2],
+      [[2, 2, 2], 2.5],
+      [[3, 1, 2], 1.5],
+      [[6], 1],
+      [[1, 1, 2, 2], 1],
+    ],
+    expert: [
+      [[2, 2, 2], 2],
+      [[3, 1, 2], 2],
+      [[1, 1, 1, 1, 2], 1.5],
+      [[4, 2], 1.5],
+      [[6], 1],
+    ],
+  },
+  2: {
+    initiation: [[[2], 1]],
+    debutant: [[[2], 3], [[1, 1], 1]],
+    intermediaire: [[[2], 2], [[1, 1], 2]],
+    avance: [[[2], 1.5], [[1, 1], 2], [[1, 1], 1]],
+    expert: [[[1, 1], 2.5], [[2], 1]],
+  },
 };
+
+function genMeasureRhythm(rng, meter, level, isLast) {
+  const L = meter.measureLen;
+  const B = meter.beatLen;
+  const nBeats = L / B;
+
+  // En dernière mesure : conclusion pianistique claire et stable (valeur longue tenue)
+  if (isLast) {
+    let p = 0;
+    return decompose(L).map((d) => {
+      const ev = { start: p, dur: d, rest: false };
+      p += d;
+      return ev;
+    });
+  }
+
+  // En initiation : alternance de grandes valeurs tenues simples
+  if (level === 'initiation') {
+    if (L === 16 && rng.chance(0.4)) return [{ start: 0, dur: 16, rest: false }];
+    if (L === 8 && rng.chance(0.5)) {
+      return [{ start: 0, dur: 4, rest: false }, { start: 4, dur: 4, rest: false }];
+    }
+    if (L === 12 && meter.compound && rng.chance(0.5)) {
+      return [{ start: 0, dur: 6, rest: false }, { start: 6, dur: 6, rest: false }];
+    }
+  }
+
+  // En débutant : possibilité de blanche sur 4/4 ou blanche pointée sur 3/4
+  if (level === 'debutant' && rng.chance(0.35)) {
+    if (L === 16) {
+      return rng.chance(0.5)
+        ? [{ start: 0, dur: 8, rest: false }, { start: 8, dur: 4, rest: false }, { start: 12, dur: 4, rest: false }]
+        : [{ start: 0, dur: 4, rest: false }, { start: 4, dur: 4, rest: false }, { start: 8, dur: 8, rest: false }];
+    }
+    if (L === 12 && !meter.compound) {
+      return [{ start: 0, dur: 8, rest: false }, { start: 8, dur: 4, rest: false }];
+    }
+  }
+
+  // Construction beat par beat
+  const patterns = BEAT_PATTERNS[B][level] || BEAT_PATTERNS[4][level];
+  const evs = [];
+  let pos = 0;
+  for (let b = 0; b < nBeats; b++) {
+    const chosen = rng.weighted(patterns);
+    for (const d of chosen) {
+      evs.push({ start: pos, dur: d, rest: false });
+      pos += d;
+    }
+  }
+  return evs;
+}
+
+// ── Progression harmonique pianistique ───────────────────────
+
 const ALLOWED_DEGREES = {
-  initiation: [0, 3, 4],
-  debutant: [0, 3, 4, 5],
+  initiation: [0, 3, 4],       // I, IV, V
+  debutant: [0, 1, 3, 4, 5],   // I, ii, IV, V, vi
   intermediaire: [0, 1, 3, 4, 5],
   avance: [0, 1, 2, 3, 4, 5],
   expert: [0, 1, 2, 3, 4, 5],
 };
 
-function genHarmony(rng, meter, level, n, mode, enrichActive = false, extensionType = 'auto') {
+function planHarmony(rng, meter, level, n, mode, enrichActive, extensionType, minD, key) {
   const L = meter.measureLen;
   const slots = [];
   for (let m = 0; m < n; m++) {
     const splittable = m < n - 1 && level !== 'initiation' && level !== 'debutant' && meter.beats === 4;
-    if (splittable && rng.chance(level === 'expert' ? 0.6 : level === 'avance' ? 0.45 : 0.25)) {
+    if (splittable && rng.chance(level === 'expert' ? 0.5 : level === 'avance' ? 0.35 : 0.2)) {
       slots.push({ m, start: 0, len: L / 2 }, { m, start: L / 2, len: L / 2 });
     } else {
       slots.push({ m, start: 0, len: L });
     }
   }
-  // iii (accord augmenté en mineur harmonique) exclu en mineur.
+
   const allowed = ALLOWED_DEGREES[level].filter((d) => !(mode === 'minor' && d === 2));
-  let prev = 0;
+  const minDegree = degreeOf(minD, key);
+
+  // Construction d'une belle phrase musicale
   slots.forEach((s, i) => {
-    if (i === 0) s.degree = 0;
-    else {
-      const opts = TRANSITIONS[prev].filter(([d]) => allowed.includes(d));
-      s.degree = opts.length ? rng.weighted(opts) : 0;
+    if (i === 0) {
+      s.degree = 0; // Affirmation de la tonique au début
+    } else if (i === slots.length - 1) {
+      s.degree = 0; // Résolution conclusive sur la tonique à la fin
+    } else if (i === slots.length - 2) {
+      s.degree = 4; // Cadence V → I
+    } else {
+      // Choix harmonique fluide (I, IV, V, ii, vi)
+      const prev = slots[i - 1].degree;
+      let cands = allowed;
+      if (prev === 4) cands = [0, 5, 3].filter((d) => allowed.includes(d));
+      else if (prev === 0) cands = [3, 4, 5, 1].filter((d) => allowed.includes(d));
+      else if (prev === 1) cands = [4].filter((d) => allowed.includes(d));
+      else if (prev === 3) cands = [4, 0, 1].filter((d) => allowed.includes(d));
+      else if (prev === 5) cands = [1, 3, 4].filter((d) => allowed.includes(d));
+      s.degree = cands.length ? rng.pick(cands) : 0;
     }
+
     s.seventh = false;
     s.ninth = false;
     s.sus4 = false;
     s.add9 = false;
 
     if (enrichActive && extensionType === 'seventh') {
-      if (s.degree === 4) s.seventh = rng.chance(0.8); // V7
-      else if ([0, 1, 3, 5].includes(s.degree)) {
-        if (rng.chance(0.45)) s.seventh = true;
-        else if (rng.chance(0.2)) s.add9 = true;
-      }
+      if (s.degree === 4) s.seventh = rng.chance(0.85); // V7
+      else if ([0, 1, 3, 5].includes(s.degree) && rng.chance(0.4)) s.seventh = true;
     } else if (enrichActive && extensionType === 'extended') {
-      const p7 = level === 'expert' ? 0.9 : 0.8;
-      const p9 = level === 'expert' ? 0.7 : 0.55;
       if (s.degree === 4) {
         s.seventh = true;
-        if (rng.chance(p9)) s.ninth = true; // V9
-        else if (rng.chance(0.3)) s.sus4 = true; // V7sus4
+        if (rng.chance(0.7)) s.ninth = true; // V9
+        else if (rng.chance(0.3)) s.sus4 = true;
       } else if ([0, 1, 3, 5].includes(s.degree)) {
-        s.seventh = rng.chance(p7);
-        if (s.seventh && rng.chance(p9)) s.ninth = true; // Imaj9, ii9, IVmaj9, vi9
-        else if (!s.seventh && rng.chance(0.4)) s.add9 = true;
+        s.seventh = rng.chance(0.8);
+        if (s.seventh && rng.chance(0.6)) s.ninth = true; // Imaj9, ii9
+        else if (rng.chance(0.35)) s.add9 = true;
       }
     }
-    prev = s.degree;
   });
-  const last = slots.length - 1;
-  slots[last].degree = 0;
-  if (last - 1 >= 1) {
-    slots[last - 1].degree = 4; // cadence parfaite V → I
-    slots[last - 1].seventh = enrichActive && extensionType !== 'none';
-    if (enrichActive && extensionType === 'extended' && rng.chance(0.65)) slots[last - 1].ninth = true;
-  }
-  // Demi-cadence au milieu des pièces de 8 mesures et plus.
-  if (n >= 8 && n % 2 === 0) {
-    const idx = slots.findLastIndex((s) => s.m === n / 2 - 1);
-    if (idx > 0 && idx < last - 1) {
-      slots[idx].degree = 4;
-      if (enrichActive && extensionType !== 'none') slots[idx].seventh = true;
+
+  // Demi-cadence au milieu des pièces structurées (>= 4 mesures)
+  if (n >= 4 && slots.length >= 4) {
+    const midIdx = slots.findLastIndex((s) => s.m === Math.floor(n / 2) - 1);
+    if (midIdx > 0 && midIdx < slots.length - 2) {
+      slots[midIdx].degree = 4; // Suspension sur la dominante
+      if (enrichActive && extensionType !== 'none') slots[midIdx].seventh = true;
     }
   }
+
+  // Intégration naturelle du degré de minD pour que la basse s'y ancre organiquement
+  if (n >= 3 && minDegree !== 0 && allowed.includes(minDegree)) {
+    const hasMinDegree = slots.some((s) => s.degree === minDegree);
+    if (!hasMinDegree) {
+      const candidateSlotIdx = Math.max(1, Math.min(slots.length - 3, Math.floor(slots.length * 0.35)));
+      slots[candidateSlotIdx].degree = minDegree;
+    }
+  }
+
   return slots;
 }
 
@@ -383,40 +448,52 @@ const chordDegrees = (slot) => {
 const chordAt = (slots, m, pos) =>
   slots.find((s) => s.m === m && pos >= s.start && pos < s.start + s.len) ?? slots[slots.length - 1];
 
-// ── Mélodie ─────────────────────────────────────────────────
+// ── Mélodie pianistique chantante (Main Droite) ───────────────
 
-// Poids des intervalles (en degrés) : unisson, seconde, tierce…
 const INTERVAL_WEIGHTS = {
   initiation: [0.6, 8, 1.2, 0.1, 0, 0, 0, 0],
-  debutant: [0.4, 6, 2.2, 0.5, 0.25, 0, 0, 0],
-  intermediaire: [0.5, 5, 2.5, 1, 0.8, 0.25, 0, 0.15],
-  avance: [0.4, 4, 2.5, 1.3, 1, 0.5, 0.2, 0.35],
-  expert: [0.3, 3.5, 2.8, 1.5, 1.2, 0.7, 0.4, 0.5],
-};
-const RANGE_OFFSETS = {
-  initiation: [0, 4], // position fixe 5 doigts (Do-Sol)
-  debutant: [0, 7],   // 1 octave
-  intermediaire: [-2, 8],
-  avance: [-4, 11],
-  expert: [-6, 14],
+  debutant: [0.4, 6, 2.5, 0.8, 0.3, 0, 0, 0],
+  intermediaire: [0.5, 5.5, 2.8, 1.2, 0.8, 0.3, 0, 0.2],
+  avance: [0.4, 4.5, 3, 1.5, 1, 0.6, 0.3, 0.4],
+  expert: [0.3, 4, 3, 1.8, 1.2, 0.8, 0.4, 0.5],
 };
 
-function melodyRange(key, level, clef) {
-  const [lo, hi] = RANGE_OFFSETS[level];
-  if (clef === 'treble') {
-    const tonicD = dOf(key.tonicLetter, 4);
-    return { tonicD, lo: Math.max(26, tonicD + lo), hi: Math.min(43, tonicD + hi) }; // La3 … Ré6
+function melodyRange(key, level, clef, minD, maxD, hands) {
+  if (hands === 'right' || hands === 'left') {
+    return { lo: minD, hi: maxD };
   }
-  const tonicD = dOf(key.tonicLetter, key.tonicLetter >= 5 ? 2 : 3);
-  return { tonicD, lo: Math.max(16, tonicD + lo), hi: Math.min(30, tonicD + hi) }; // Mi2 … Mi4
+  const span = maxD - minD;
+  if (span <= 7) {
+    const split = Math.round(minD + span * 0.45);
+    return clef === 'treble'
+      ? { lo: Math.max(minD, split), hi: maxD }
+      : { lo: minD, hi: Math.min(maxD, split + 1) };
+  }
+  // Séparation équilibrée des mains laissant le grave à la main gauche et le chant à la main droite
+  const pivot = Math.max(minD + 4, Math.min(maxD - 5, Math.round(minD + span * 0.45)));
+  if (clef === 'treble') {
+    return { lo: Math.max(minD, pivot - 1), hi: maxD };
+  } else {
+    return { lo: minD, hi: Math.min(maxD, pivot + 1) };
+  }
 }
 
 function genMelody(rng, ctx, rhythms, clef, hand) {
-  const { key, scale, meter, slots, level, n } = ctx;
-  const { tonicD, lo, hi } = melodyRange(key, level, clef);
+  const { key, scale, meter, slots, level, n, minD, maxD, hands } = ctx;
+  const { lo, hi } = melodyRange(key, level, clef, minD, maxD, hands);
   const IW = INTERVAL_WEIGHTS[level];
+
   const range = [];
   for (let D = lo; D <= hi; D++) range.push(D);
+  if (!range.length) {
+    for (let D = minD; D <= maxD; D++) range.push(D);
+  }
+
+  const midD = (lo + hi) / 2;
+  const inRangeTonics = range.filter((x) => degreeOf(x, key) === 0);
+  const referenceTonicD = inRangeTonics.length
+    ? inRangeTonics.reduce((best, t) => (Math.abs(t - midD) < Math.abs(best - midD) ? t : best), inRangeTonics[0])
+    : Math.round(midD);
 
   const pitched = [];
   rhythms.forEach((rhythm, m) => rhythm.forEach((ev) => { if (!ev.rest) pitched.push({ m, ev }); }));
@@ -424,6 +501,13 @@ function genMelody(rng, ctx, rhythms, clef, hand) {
 
   const nearest = (cands, target) =>
     cands.reduce((best, D) => (Math.abs(D - target) < Math.abs(best - target) ? D : best), cands[0]);
+
+  // Point culminant expressif (climax) atteignant maxD
+  const targetClimaxIdx = (hand === 'right' || hands === 'left')
+    ? (N >= 4 ? Math.max(1, Math.min(N - 2, Math.floor(N * 0.65))) : (N > 1 ? 0 : 0))
+    : -1;
+  // Creux mélodique atteignant minD si la main droite joue seule
+  const targetMinIdx = (hands === 'right' && N >= 4) ? Math.max(1, Math.floor(N * 0.25)) : -1;
 
   let prev = null;
   let prev2 = null;
@@ -437,35 +521,56 @@ function genMelody(rng, ctx, rhythms, clef, hand) {
     let D;
 
     if (i === N - 1) {
+      // Fin sur la tonique dans l'ambitus
       const tonics = range.filter((x) => degreeOf(x, key) === 0);
-      D = nearest(tonics, prev ?? tonicD);
+      D = tonics.length ? nearest(tonics, prev ?? referenceTonicD) : (range[0] ?? minD);
+    } else if (i === targetClimaxIdx && (hand === 'right' || hands === 'left')) {
+      // Sommet mélodique : atteint maxD
+      D = maxD;
+    } else if (i === targetMinIdx && hands === 'right') {
+      // Creux mélodique : atteint minD
+      D = minD;
     } else if (i === 0) {
+      // Début sur un degré stable (tonique ou quinte)
       const cands = range.filter(isCT);
-      D = rng.weighted(cands.map((x) => [x, (degreeOf(x, key) === 0 ? 2 : 1) / (1 + Math.abs(x - (tonicD + 2)))]));
+      D = cands.length
+        ? rng.weighted(cands.map((x) => [x, (degreeOf(x, key) === 0 ? 3 : 1) / (1 + Math.abs(x - referenceTonicD))]))
+        : referenceTonicD;
     } else if (i === N - 2) {
-      // Sensible ou 2e degré pour résoudre par mouvement conjoint.
+      // Sensible ou 2e degré pour résoudre par mouvement conjoint
+      const finalTonics = range.filter((x) => degreeOf(x, key) === 0);
+      const targetTonic = finalTonics.length ? nearest(finalTonics, prev ?? referenceTonicD) : referenceTonicD;
       const cands = range.filter((x) => {
         const deg = degreeOf(x, key);
-        const tonicNear = (deg === 1 && x - 1 >= lo) || (deg === 6 && x + 1 <= hi);
-        return tonicNear;
+        return (deg === 1 || deg === 6) && Math.abs(x - targetTonic) === 1;
       });
-      const weighted = cands.map((x) => [x, IW[Math.abs(x - prev)] ?? 0]);
+      const weighted = cands.map((x) => [x, IW[Math.abs(x - prev)] ?? 1]);
       D = weighted.some(([, w]) => w > 0) ? rng.weighted(weighted) : nearest(cands.length ? cands : range, prev);
     } else {
       const strong = ev.start % meter.beatLen === 0;
+      const progress = i / N;
       const weights = [];
       for (const x of range) {
         const iv = Math.abs(x - prev);
         let w = IW[iv] ?? 0;
         if (!w) continue;
-        if (iv === 0 && prev === prev2) continue; // pas trois fois la même note
+        if (iv === 0 && prev === prev2) continue; // Pas 3 fois la même note
         const ct = isCT(x);
-        w *= strong ? (ct ? 1 : 0.08) : ct ? 1 : 0.9;
+        w *= strong ? (ct ? 1.2 : 0.1) : ct ? 1 : 0.9;
         if ((x - prev) * dir > 0) w *= 1.8;
+        // Résolution de saut en sens contraire
         if (Math.abs(lastInt) >= 3) {
-          // après un saut : mouvement conjoint en sens contraire
-          if (iv >= 1 && iv <= 2 && Math.sign(x - prev) === -Math.sign(lastInt)) w *= 3;
-          if (iv >= 3) w *= 0.3;
+          if (iv >= 1 && iv <= 2 && Math.sign(x - prev) === -Math.sign(lastInt)) w *= 3.5;
+          if (iv >= 3) w *= 0.2;
+        }
+        // Préparation et montée vers le climax
+        if (targetClimaxIdx > 0 && i < targetClimaxIdx && targetClimaxIdx - i <= 3) {
+          if (x > prev) w *= 3;
+        }
+        if (progress >= 0.45 && progress <= 0.75) {
+          if (x > midD) w *= 1.4;
+        } else if (progress > 0.75) {
+          if (Math.abs(x - referenceTonicD) < Math.abs(prev - referenceTonicD)) w *= 1.3;
         }
         weights.push([x, w]);
       }
@@ -475,13 +580,15 @@ function genMelody(rng, ctx, rhythms, clef, hand) {
     lastInt = prev == null ? 0 : D - prev;
     prev2 = prev;
     prev = D;
-    if (D >= hi - 1) dir = -1;
+    if (i === targetClimaxIdx) dir = -1;
+    else if (i === targetMinIdx) dir = 1;
+    else if (D >= hi - 1) dir = -1;
     else if (D <= lo + 1) dir = 1;
-    else if (rng.chance(0.2)) dir = -dir;
+    else if (rng.chance(0.25)) dir = -dir;
     ev.D = D;
   });
 
-  // Altérations : harmonie pour les notes de l'accord, règles mélodiques sinon.
+  // Altérations mélodiques
   const alterOf = new Array(N);
   const isMelodic = scale.minorType === 'melodic';
   pitched.forEach(({ m, ev }, i) => {
@@ -495,8 +602,6 @@ function genMelody(rng, ctx, rhythms, clef, hand) {
     }
   });
   if (isMelodic) {
-    // 6e degré : haussée si elle monte, ou si elle est voisine d'une sensible haussée
-    // (évite la seconde augmentée).
     pitched.forEach(({ m, ev }, i) => {
       if (degreeOf(ev.D, key) !== 5) return;
       const ct = chordDegrees(chordAt(slots, m, ev.start)).includes(5);
@@ -508,8 +613,10 @@ function genMelody(rng, ctx, rhythms, clef, hand) {
     });
   }
 
+  // Événements et harmonisation main droite (accords sous le chant)
   const events = rhythms.map(() => []);
   const isEnrichedRight = ctx.enrichRight && hand === 'right';
+
   rhythms.forEach((rhythm, m) => {
     rhythm.forEach((ev, i) => {
       const out = { id: `${hand}-${m}-${i}`, hand, start: ev.start, dur: ev.dur, rest: !!ev.rest, notes: [] };
@@ -518,38 +625,38 @@ function genMelody(rng, ctx, rhythms, clef, hand) {
         const alter = alterOf[idx];
         out.notes.push({ D: ev.D, alter, midi: toMidi(ev.D, alter) });
 
-        // Harmonisation de la main droite (accords enrichis)
         if (isEnrichedRight) {
           const isLastNote = (m === n - 1 && i === rhythm.length - 1);
           const isStrongBeat = (ev.dur >= 4 || ev.start === 0 || ev.start % meter.beatLen === 0);
-          const isHighLevel = (level === 'avance' || level === 'expert');
-          const prob = level === 'expert' ? 0.75 : level === 'avance' ? 0.60 : 0.40;
-          const shouldAddChord = isLastNote || (isStrongBeat && rng.chance(prob));
+          const prob = level === 'expert' ? 0.75 : level === 'avance' ? 0.6 : 0.4;
+          const shouldAdd = isLastNote || (isStrongBeat && rng.chance(prob));
 
-          if (shouldAddChord) {
+          if (shouldAdd) {
             const chord = chordAt(slots, m, ev.start);
             const degs = chordDegrees(chord);
-            // Recherche de notes de l'accord strictement sous la mélodie
             const candidates = [];
+
+            // Recherche de notes d'harmonie sous la mélodie
+            // Écartement strict de la main droite : maximum 7 à 8 degrés (une octave) pour être 100% jouable d'une seule main
             for (const deg of degs) {
               const letter = (key.tonicLetter + deg) % 7;
-              // On teste les octaves possibles sous ev.D
-              for (let oct = octaveOf(ev.D); oct >= 3; oct--) {
+              for (let oct = octaveOf(ev.D); oct >= 1; oct--) {
                 const candD = oct * 7 + letter;
                 const interval = ev.D - candD;
-                if (candD >= 21 && interval >= 2 && interval <= 8 && !candidates.includes(candD)) {
+                // Entre une tierce (2) et une octave (7) sous le soprano
+                if (candD >= minD && candD <= maxD && interval >= 2 && interval <= 7 && !candidates.includes(candD)) {
                   candidates.push(candD);
                 }
               }
             }
-            candidates.sort((a, b) => b - a); // du plus proche au plus bas
+            candidates.sort((a, b) => b - a); // Du plus proche au plus bas
 
             const maxNotesToAdd = isLastNote
-              ? (level === 'expert' ? 3 : level === 'avance' ? 2 : 1)
+              ? (level === 'expert' ? 2 : level === 'avance' ? 2 : 1)
               : (level === 'expert' ? 2 : 1);
-            const notesToAdd = candidates.slice(0, maxNotesToAdd);
+            const toAdd = candidates.slice(0, maxNotesToAdd);
 
-            for (const cD of notesToAdd) {
+            for (const cD of toAdd) {
               const cAlter = scale.harmony[degreeOf(cD, key)];
               out.notes.push({ D: cD, alter: cAlter, midi: toMidi(cD, cAlter) });
             }
@@ -560,128 +667,176 @@ function genMelody(rng, ctx, rhythms, clef, hand) {
       events[m].push(out);
     });
   });
+
   return events;
 }
 
-// ── Accompagnement main gauche ──────────────────────────────
-
-const ACC_STYLES = {
-  4: {
-    initiation: ['held_root'],
-    debutant: ['held_root', 'held_fifth', 'beat_root'],
-    intermediaire: ['block', 'waltz', 'broken', 'held_triad', 'held_seventh'],
-    avance: ['alberti', 'arpeggio', 'waltz', 'broken', 'held_seventh', 'jazz_shell'],
-    expert: ['alberti', 'arpeggio', 'waltz', 'broken', 'open_ninth', 'jazz_shell', 'arpeggio_9th'],
-  },
-  6: {
-    initiation: ['held_root'],
-    debutant: ['held_root', 'held_fifth', 'beat_root'],
-    intermediaire: ['comp_qe', 'block', 'held_triad', 'held_seventh'],
-    avance: ['arp3', 'arp3b', 'comp_qe', 'held_seventh'],
-    expert: ['arp3', 'arp3b', 'comp_qe', 'open_ninth', 'arpeggio_9th'],
-  },
-  2: {
-    initiation: ['held_root'],
-    debutant: ['held_root', 'held_fifth'],
-    intermediaire: ['beat_root', 'held_triad', 'waltz', 'held_seventh'],
-    avance: ['arp3', 'waltz', 'held_seventh'],
-    expert: ['arp3', 'waltz', 'open_ninth', 'jazz_shell'],
-  },
-};
+// ── Accompagnement pianistique (Main Gauche) ──────────────────
 
 function genAccompaniment(rng, ctx) {
-  const { key, scale, meter, slots, level, n, enrichLeft, extensionType } = ctx;
-  let availableStyles = ACC_STYLES[meter.beatLen][level];
-  if (!enrichLeft || extensionType === 'none') {
-    availableStyles = availableStyles.filter((s) => !['held_seventh', 'open_ninth', 'jazz_shell', 'arpeggio_9th'].includes(s));
-    if (!availableStyles.length) availableStyles = ['held_root'];
-  } else if (extensionType === 'seventh') {
-    availableStyles = availableStyles.filter((s) => !['open_ninth', 'arpeggio_9th'].includes(s));
-    if (!availableStyles.length) availableStyles = ['held_root'];
-  }
-  const style = rng.pick(availableStyles);
+  const { key, scale, meter, slots, level, n, enrichLeft, extensionType, minD, maxD } = ctx;
   const B = meter.beatLen;
   const letterOfDeg = (deg) => (key.tonicLetter + deg) % 7;
+  const minLetter = letterOf(minD);
+
+  const fitD = (D) => {
+    let res = D;
+    while (res < minD && res + 7 <= maxD) res += 7;
+    while (res > maxD && res - 7 >= minD) res -= 7;
+    return Math.max(minD, Math.min(maxD, res));
+  };
+
+  // Identification du slot harmonique idéal pour poser minD
+  let minSlotIdx = slots.findIndex((s) => letterOfDeg(s.degree) === minLetter);
+  if (minSlotIdx === -1) minSlotIdx = 0;
 
   const perMeasure = Array.from({ length: n }, () => []);
 
-  for (const slot of slots) {
-    const r = lowestDWithLetter(letterOfDeg(slot.degree), 16); // basse Mi2 … Ré3
+  for (let slotIdx = 0; slotIdx < slots.length; slotIdx++) {
+    const slot = slots[slotIdx];
+    const span = maxD - minD;
+    const pivot = Math.max(minD + 4, Math.min(maxD - 5, Math.round(minD + span * 0.45)));
+    const baseTarget = Math.max(minD, Math.min(pivot - 5, 16));
+
+    // Si c'est le slot dédié ou que le degré a la même lettre que minD : basse ancrée sur minD
+    const isMinSlot = (slotIdx === minSlotIdx || letterOfDeg(slot.degree) === minLetter);
+    const r = isMinSlot ? minD : fitD(lowestDWithLetter(letterOfDeg(slot.degree), baseTarget));
+
     const degs = chordDegrees(slot);
     const upperDegs = slot.seventh || slot.ninth ? degs.slice(1) : degs;
-    const upper = upperDegs.map((d) => lowestDWithLetter(letterOfDeg(d), 21)).sort((a, b) => a - b); // Do3 … Si3
-    const ninthD = lowestDWithLetter(letterOfDeg((slot.degree + 1) % 7), 21);
-    const seventhD = lowestDWithLetter(letterOfDeg((slot.degree + 6) % 7), 21);
+    const upperTarget = Math.max(minD + 2, Math.min(pivot, 21));
 
-    const nBeats = slot.len / B;
+    // Voicings médium compacts et sonores (écart max <= 7 pour être jouables d'une seule main)
+    const upper = upperDegs.map((d) => fitD(lowestDWithLetter(letterOfDeg(d), upperTarget))).sort((a, b) => a - b);
+    const ninthD = fitD(lowestDWithLetter(letterOfDeg((slot.degree + 1) % 7), upperTarget));
+    const seventhD = fitD(lowestDWithLetter(letterOfDeg((slot.degree + 6) % 7), upperTarget));
+
     const evs = [];
-    const add = (pos, dur, Ds) => evs.push({ start: slot.start + pos, dur, Ds });
-    const fill = (Ds) => { let pos = 0; for (const d of decompose(slot.len)) { add(pos, d, Ds); pos += d; } };
-    const cycle = (step, seq) => { for (let pos = 0, k = 0; pos < slot.len; pos += step, k++) add(pos, step, [seq[k % seq.length]]); };
+    const add = (pos, dur, Ds) => {
+      let filtered = [...new Set(Ds.map(fitD))].sort((a, b) => a - b);
+      // Règle anatomique : une main ne peut pas plaquer plus d'une octave (<= 8 degrés)
+      if (filtered.length > 1 && filtered.at(-1) - filtered[0] > 8) {
+        filtered = [filtered[0]];
+      }
+      evs.push({ start: slot.start + pos, dur, Ds: filtered });
+    };
+    const fill = (Ds) => {
+      let p = 0;
+      for (const d of decompose(slot.len)) {
+        add(p, d, Ds);
+        p += d;
+      }
+    };
 
+    // Dernier accord de la pièce : résolution finale pleine et stable
     if (slot.m === n - 1) {
-      // Accord final tenu
       if (level === 'initiation' || level === 'debutant') {
         fill([r]);
-      } else if (level === 'intermediaire') {
-        fill(enrichLeft ? [r, r + 4, r + 7] : [r, r + 4]);
       } else {
-        fill(enrichLeft ? [r, r + 4, seventhD, ninthD] : [r, r + 4, r + 7]);
+        // Quinte ouverte noble et résonante (écart = 4 degrés, ultra-jouable)
+        fill([r, r + 4]);
+      }
+    } else if (meter.num === 3 && meter.den === 4) {
+      // ── Style Valse classique (3/4) ──────────────────────────
+      if (level === 'initiation') {
+        fill([r]);
+      } else {
+        add(0, 4, [r]);
+        add(4, 4, upper);
+        add(8, 4, upper);
+      }
+    } else if (meter.num === 3 && meter.den === 8) {
+      // ── Style Trois Croches (3/8) ───────────────────────────
+      if (level === 'initiation' || level === 'debutant') {
+        fill([r]);
+      } else {
+        add(0, 2, [r]);
+        add(2, 2, upper);
+        add(4, 2, upper);
+      }
+    } else if (meter.compound && meter.beatLen === 6) {
+      // ── Style Barcarolle / Berceuse (6/8, 12/8) ─────────────
+      if (level === 'initiation' || level === 'debutant') {
+        const nBeats = Math.floor(slot.len / 6);
+        for (let b = 0; b < nBeats; b++) {
+          add(b * 6, 6, [b === 0 ? r : (b % 2 === 0 ? r : r + 4)]);
+        }
+      } else {
+        // Arpège fluide balancé par temps de 6
+        const nBeats = Math.floor(slot.len / 6);
+        for (let b = 0; b < nBeats; b++) {
+          add(b * 6, 2, [r]);
+          add(b * 6 + 2, 2, [upper[0] ?? (r + 4)]);
+          add(b * 6 + 4, 2, [upper[1] ?? (r + 7)]);
+        }
       }
     } else {
-      switch (style) {
-        case 'held_root': fill([r]); break;
-        case 'held_fifth': fill([r, r + 4]); break;
-        case 'held_triad': fill(upper); break;
-        case 'held_seventh': fill([r, ...upper.slice(0, 3)]); break;
-        case 'open_ninth': fill([r, r + 4, ninthD]); break;
-        case 'beat_root': for (let b = 0; b < nBeats; b++) add(b * B, B, [r]); break;
-        case 'block': for (let b = 0; b < nBeats; b++) add(b * B, B, upper); break;
-        case 'jazz_shell':
-          for (let b = 0; b < nBeats; b++) {
-            if (b === 0) add(0, B, [r, seventhD]);
-            else add(b * B, B, upper.slice(0, 2));
+      // ── Style Classique / Pop (4/4, 2/4, 2/2, 5/4) ───────────
+      if (level === 'initiation') {
+        fill([r]);
+      } else if (level === 'debutant') {
+        if (rng.chance(0.5) || slot.len <= 8) {
+          fill([r, r + 4]);
+        } else {
+          const nBeats = Math.floor(slot.len / 4);
+          for (let b = 0; b < nBeats; b++) add(b * 4, 4, [r]);
+        }
+      } else if (level === 'intermediaire') {
+        if (slot.len === 16 && rng.chance(0.65)) {
+          // Basse d'Alberti classique
+          const albSeq = [r, upper[upper.length - 1] ?? (r + 4), upper[0] ?? (r + 2), upper[upper.length - 1] ?? (r + 4)];
+          for (let p = 0, k = 0; p < slot.len; p += 2, k++) {
+            add(p, 2, [albSeq[k % albSeq.length]]);
           }
-          break;
-        case 'waltz':
+        } else {
+          // Stride : Temps 1 basse, temps 2 accord
+          const nBeats = Math.floor(slot.len / 4);
           for (let b = 0; b < nBeats; b++) {
-            if (b === 0) add(0, B, [r]);
-            else if (nBeats >= 4 && b === Math.floor(nBeats / 2) + (nBeats % 2)) add(b * B, B, [r - 3 >= 15 ? r - 3 : r + 4]);
-            else add(b * B, B, upper);
+            if (b % 2 === 0) add(b * 4, 4, [r]);
+            else add(b * 4, 4, upper);
           }
-          break;
-        case 'broken': cycle(B, [r, r + 4, r + 7, r + 4]); break;
-        case 'alberti': cycle(2, [upper[0], upper[upper.length - 1], upper[1], upper[upper.length - 1]]); break;
-        case 'arpeggio': cycle(2, [r, r + 4, r + 7, r + 4]); break;
-        case 'arpeggio_9th': cycle(2, [r, upper[0], seventhD, ninthD]); break;
-        case 'comp_qe': for (let b = 0; b < nBeats; b++) { add(b * B, 4, [r]); add(b * B + 4, 2, upper); } break;
-        case 'arp3': cycle(2, [r, r + 4, r + 7]); break;
-        case 'arp3b': cycle(2, [r, r + 4, r + 9]); break;
-        default: fill([r]);
+        }
+      } else {
+        // Niveaux Avancé et Virtuose
+        if (slot.len >= 8 && rng.chance(0.6)) {
+          const arp = [r, r + 4, upper[0] ?? seventhD, upper[1] ?? ninthD];
+          for (let p = 0, k = 0; p < slot.len; p += 2, k++) {
+            add(p, 2, [arp[k % arp.length]]);
+          }
+        } else {
+          const nBeats = Math.floor(slot.len / 4);
+          for (let b = 0; b < nBeats; b++) {
+            if (b === 0) add(0, 4, [r]);
+            else add(b * 4, 4, upper);
+          }
+        }
       }
     }
+
     perMeasure[slot.m].push(...evs);
   }
 
-  return perMeasure.map((evs, m) => evs
-    .sort((a, b) => a.start - b.start)
-    .map((ev, i) => {
-      const Ds = [...new Set(ev.Ds)].sort((a, b) => a - b);
-      return {
-        id: `left-${m}-${i}`,
-        hand: 'left',
-        start: ev.start,
-        dur: ev.dur,
-        rest: false,
-        notes: Ds.map((D) => {
-          const alter = scale.harmony[degreeOf(D, key)];
-          return { D, alter, midi: toMidi(D, alter) };
-        }),
-      };
-    }));
+  return perMeasure.map((evs, m) =>
+    evs
+      .sort((a, b) => a.start - b.start)
+      .map((ev, i) => {
+        const Ds = [...new Set(ev.Ds)].sort((a, b) => a - b);
+        return {
+          id: `left-${m}-${i}`,
+          hand: 'left',
+          start: ev.start,
+          dur: ev.dur,
+          rest: false,
+          notes: Ds.map((D) => {
+            const alter = scale.harmony[degreeOf(D, key)] ?? 0;
+            return { D, alter, midi: toMidi(D, alter) };
+          }),
+        };
+      })
+  );
 }
 
-// ── Point d'entrée ──────────────────────────────────────────
+// ── Point d'entrée principal ────────────────────────────────
 
 export function generateScore(settings, seed) {
   const rng = createRng(seed);
@@ -690,7 +845,10 @@ export function generateScore(settings, seed) {
   const scale = buildScale(key, params.minorType);
   const meter = meterInfo(params.timeSignature);
   const n = params.measures;
-  const slots = genHarmony(rng, meter, params.level, n, key.mode, params.enrichRight || params.enrichLeft, params.extensionType);
+
+  // Planification harmonique structurée
+  const slots = planHarmony(rng, meter, params.level, n, key.mode, params.enrichRight || params.enrichLeft, params.extensionType, params.minD, key);
+
   const ctx = {
     key,
     scale,
@@ -698,13 +856,15 @@ export function generateScore(settings, seed) {
     slots,
     level: params.level,
     n,
+    hands: params.hands,
+    minD: params.minD,
+    maxD: params.maxD,
     enrichRight: params.enrichRight,
     enrichLeft: params.enrichLeft,
     extensionType: params.extensionType,
   };
 
   const rhythms = Array.from({ length: n }, (_, m) => genMeasureRhythm(rng, meter, params.level, m === n - 1));
-  applyRests(rng, rhythms, params.level);
 
   let treble = null;
   let bass = null;
@@ -721,7 +881,92 @@ export function generateScore(settings, seed) {
     bass: bass ? bass[m] : null,
   }));
 
-  // Contrôle : chaque mesure doit être exactement remplie.
+  // 1. Contrôle et garantie stricte de l'ambitus [minD, maxD]
+  measures.forEach((ms) => {
+    for (const staff of [ms.treble, ms.bass]) {
+      if (!staff) continue;
+      for (const ev of staff) {
+        if (ev.rest) continue;
+        for (const note of ev.notes) {
+          if (note.D < params.minD || note.D > params.maxD) {
+            let res = note.D;
+            while (res < params.minD && res + 7 <= params.maxD) res += 7;
+            while (res > params.maxD && res - 7 >= params.minD) res -= 7;
+            note.D = Math.max(params.minD, Math.min(params.maxD, res));
+            const alter = scale.harmony[degreeOf(note.D, key)] ?? 0;
+            note.alter = alter;
+            note.midi = toMidi(note.D, alter);
+          }
+        }
+        ev.notes.sort((a, b) => a.D - b.D);
+      }
+    }
+  });
+
+  // 2. Garantie absolue de présence de minD en main gauche et maxD en main droite
+  if (treble) {
+    const hasMax = measures.some((m) => m.treble && m.treble.some((e) => !e.rest && e.notes.some((n) => n.D === params.maxD)));
+    if (!hasMax) {
+      const allPitched = [];
+      measures.forEach((m) => {
+        if (m.treble) m.treble.forEach((e) => { if (!e.rest && e.notes.length) allPitched.push(e); });
+      });
+      if (allPitched.length) {
+        const targetEv = allPitched.reduce((best, e) => (e.notes.at(-1).D > best.notes.at(-1).D ? e : best), allPitched[0]);
+        const alter = scale.harmony[degreeOf(params.maxD, key)] ?? 0;
+        targetEv.notes[targetEv.notes.length - 1] = { D: params.maxD, alter, midi: toMidi(params.maxD, alter) };
+        targetEv.notes.sort((a, b) => a.D - b.D);
+      }
+    }
+    if (params.hands === 'right') {
+      const hasMin = measures.some((m) => m.treble && m.treble.some((e) => !e.rest && e.notes.some((n) => n.D === params.minD)));
+      if (!hasMin) {
+        const allPitched = [];
+        measures.forEach((m) => {
+          if (m.treble) m.treble.forEach((e) => { if (!e.rest && e.notes.length) allPitched.push(e); });
+        });
+        if (allPitched.length) {
+          const targetEv = allPitched.reduce((best, e) => (e.notes[0].D < best.notes[0].D ? e : best), allPitched[0]);
+          const alter = scale.harmony[degreeOf(params.minD, key)] ?? 0;
+          targetEv.notes[0] = { D: params.minD, alter, midi: toMidi(params.minD, alter) };
+          targetEv.notes.sort((a, b) => a.D - b.D);
+        }
+      }
+    }
+  }
+
+  if (bass) {
+    const hasMin = measures.some((m) => m.bass && m.bass.some((e) => !e.rest && e.notes.some((n) => n.D === params.minD)));
+    if (!hasMin) {
+      const allPitched = [];
+      measures.forEach((m) => {
+        if (m.bass) m.bass.forEach((e) => { if (!e.rest && e.notes.length) allPitched.push(e); });
+      });
+      if (allPitched.length) {
+        const targetEv = allPitched.reduce((best, e) => (e.notes[0].D < best.notes[0].D ? e : best), allPitched[0]);
+        const alter = scale.harmony[degreeOf(params.minD, key)] ?? 0;
+        targetEv.notes[0] = { D: params.minD, alter, midi: toMidi(params.minD, alter) };
+        targetEv.notes.sort((a, b) => a.D - b.D);
+      }
+    }
+    if (params.hands === 'left') {
+      const hasMax = measures.some((m) => m.bass && m.bass.some((e) => !e.rest && e.notes.some((n) => n.D === params.maxD)));
+      if (!hasMax) {
+        const allPitched = [];
+        measures.forEach((m) => {
+          if (m.bass) m.bass.forEach((e) => { if (!e.rest && e.notes.length) allPitched.push(e); });
+        });
+        if (allPitched.length) {
+          const targetEv = allPitched.reduce((best, e) => (e.notes.at(-1).D > best.notes.at(-1).D ? e : best), allPitched[0]);
+          const alter = scale.harmony[degreeOf(params.maxD, key)] ?? 0;
+          targetEv.notes[targetEv.notes.length - 1] = { D: params.maxD, alter, midi: toMidi(params.maxD, alter) };
+          targetEv.notes.sort((a, b) => a.D - b.D);
+        }
+      }
+    }
+  }
+
+  // 3. Contrôle de complétude de chaque mesure
   measures.forEach((ms) => {
     for (const staff of [ms.treble, ms.bass]) {
       if (!staff) continue;

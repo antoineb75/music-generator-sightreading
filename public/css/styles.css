@@ -400,6 +400,147 @@ body {
   flex-wrap: wrap;
 }
 
+/* ── Composant d'affichage de l'ambitus ────────────────────── */
+.ambitus-card {
+  margin-bottom: 1.25rem;
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%);
+  border: 1px solid #e2e8f0;
+  padding: 0.85rem 1.1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.ambitus-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.ambitus-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.ambitus-title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.ambitus-icon {
+  font-size: 1.15rem;
+}
+
+.ambitus-title {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.ambitus-interval-badge {
+  background: #e2e8f0;
+  color: #334155;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.15rem 0.55rem;
+  border-radius: 9999px;
+  border: 1px solid #cbd5e1;
+}
+
+.ambitus-pills-row {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.ambitus-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  color: #334155;
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-sm);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.ambitus-pill-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.ambitus-keyboard-container {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0.2rem 0;
+}
+
+.ambitus-keyboard-svg {
+  display: block;
+  width: 100%;
+  min-width: 620px;
+  height: auto;
+  max-height: 75px;
+}
+
+.key-white {
+  transition: fill 0.2s ease, stroke 0.2s ease;
+}
+
+.key-black {
+  transition: fill 0.2s ease, stroke 0.2s ease;
+}
+
+.key-active {
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.08));
+}
+
+.ambitus-hands-breakdown {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.8rem;
+  color: #475569;
+  flex-wrap: wrap;
+  padding-top: 0.45rem;
+  border-top: 1px dashed #e2e8f0;
+}
+
+.hand-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.hand-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.hand-bass strong {
+  color: #0369a1;
+}
+
+.hand-treble strong {
+  color: #be185d;
+}
+
+.hand-divider {
+  color: #94a3b8;
+}
+
 .score-container {
   width: 100%;
 }
@@ -409,6 +550,13 @@ body {
   padding: 0.35rem 0;
   border-radius: var(--radius-sm);
   transition: background-color 0.2s ease;
+}
+
+.score-container .system svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible !important;
 }
 
 .score-container .system.is-current {
@@ -424,6 +572,12 @@ body {
 .vf-note-clickable:hover path,
 .vf-note-clickable:hover polygon {
   fill: #2563eb !important;
+}
+
+/* Notes à très grand ambitus (lignes supplémentaires extrêmes) */
+.vf-note-extreme path,
+.vf-note-extreme polygon {
+  filter: drop-shadow(0 0 2px rgba(59, 130, 246, 0.35));
 }
 
 /* Coloration active pendant la lecture */
@@ -498,6 +652,34 @@ body {
   .score-details {
     color: #222 !important;
     font-size: 0.85rem !important;
+  }
+
+  .ambitus-card {
+    background: #ffffff !important;
+    border: 1pt solid #94a3b8 !important;
+    box-shadow: none !important;
+    padding: 0.4rem 0.6rem !important;
+    margin-bottom: 0.8rem !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .ambitus-keyboard-svg {
+    min-width: 0 !important;
+    max-height: 48px !important;
+  }
+
+  .ambitus-interval-badge {
+    background: #ffffff !important;
+    border: 1pt solid #64748b !important;
+    color: #000000 !important;
+  }
+
+  .ambitus-pill {
+    background: #ffffff !important;
+    border: 1pt solid #94a3b8 !important;
+    color: #000000 !important;
+    box-shadow: none !important;
   }
 
   .score-container .system {
