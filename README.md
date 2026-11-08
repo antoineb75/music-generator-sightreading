@@ -80,7 +80,7 @@ Aucune installation complexe ni outil de compilation nécessaire : l'application
 ### Option 1 : Avec Python
 ```bash
 # Dans le dossier du projet :
-python3 -m http.server 8080 --directory public
+python3 -m http.server 8080 --directory docs
 ```
 Puis ouvrez votre navigateur sur [http://localhost:8080](http://localhost:8080).
 
@@ -134,7 +134,7 @@ Cloud Run construira le conteneur et fournira automatiquement une URL HTTPS publ
 ├── README.md
 ├── tests/
 │   └── generator.test.js        # Tests unitaires (gammes, mesures complètes, MIDI, cadences)
-└── public/
+└── docs/
     ├── index.html               # Interface utilisateur
     ├── css/
     │   └── styles.css           # Thème sombre, adaptatif et styles d'impression A4

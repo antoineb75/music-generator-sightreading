@@ -7,7 +7,7 @@ ENV PORT=8080
 COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 
 # Copie des fichiers statiques de l'application
-COPY public /usr/share/nginx/html
+COPY docs /usr/share/nginx/html
 
 EXPOSE 8080
 

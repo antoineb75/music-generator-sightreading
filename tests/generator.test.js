@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { generateScore, TIME_SIGNATURES, LEVELS, HANDS, meterInfo } from '../public/js/generator.js';
-import { KEYS, MINOR_TYPES, buildScale, getKey, degreeOf, noteToD, analyzeScoreAmbitus, formatInterval, describeChord, getActivePlaybackInfo } from '../public/js/theory.js';
-import { buildAmbitusKeyboardSvg } from '../public/js/ambitus-ribbon.js';
-import { midiFileBytes } from '../public/js/midi-file.js';
-import { Player } from '../public/js/player.js';
+import { generateScore, TIME_SIGNATURES, LEVELS, HANDS, meterInfo } from '../docs/js/generator.js';
+import { KEYS, MINOR_TYPES, buildScale, getKey, degreeOf, noteToD, analyzeScoreAmbitus, formatInterval, describeChord, getActivePlaybackInfo } from '../docs/js/theory.js';
+import { buildAmbitusKeyboardSvg } from '../docs/js/ambitus-ribbon.js';
+import { midiFileBytes } from '../docs/js/midi-file.js';
+import { Player } from '../docs/js/player.js';
 
 const baseSettings = (over = {}) => ({
   timeSignature: '4/4', measures: 8, key: 'C', hands: 'both', level: 'debutant', minorType: 'harmonic',
