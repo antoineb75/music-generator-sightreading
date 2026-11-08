@@ -89,9 +89,15 @@ export class Player {
   }
 
   async play() {
-    if (!this.score || this.state === 'playing') return;
-    if (this.output === 'synth') await this.synth.ensure();
-    else if (!this.midi.ready) throw new Error('Aucune sortie MIDI sélectionnée.');
+    if (!this.score || this.state === 'playing' || this.starting) return;
+    this.starting = true;
+    try {
+      if (this.output === 'synth') await this.synth.ensure();
+      else if (!this.midi.ready) throw new Error('Aucune sortie MIDI sélectionnée.');
+    } finally {
+      this.starting = false;
+    }
+    if (this.state === 'playing') return;
 
     if (this.posU >= this.score.totalUnits) this.posU = 0;
     this.anchorTime = this.clock() + 0.05; // 50ms de latence de démarrage immédiate

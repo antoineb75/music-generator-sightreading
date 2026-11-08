@@ -271,7 +271,7 @@ export class ScoreRenderer {
         if (isFirstOfLine && m.index > 0) topStave.setMeasure(m.index + 1);
         if (m.index === 0 && params.bpm) {
           const itName = tempoItalianName(params.bpm);
-          const dur = meter.compound ? 'qd' : 'q';
+          const dur = 'q';
           const dots = meter.compound ? 1 : 0;
           topStave.setTempo({ name: itName, bpm: params.bpm, duration: dur, dots }, geom.tempoYOffset);
         }

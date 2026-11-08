@@ -421,3 +421,37 @@ test('getActivePlaybackInfo : identification en direct de la note la plus aiguë
   assert.equal(infoU26.chord, 'Sol 7 (V7)');
   assert.equal(infoU26.measureLabel, '2 / 2');
 });
+
+test('gravure VexFlow : la signature 6/8 et les mesures composées ne génèrent aucune exception (notamment setTempo)', async () => {
+  const fs = await import('node:fs');
+  const vm = await import('node:vm');
+  const win = {};
+  vm.runInNewContext(fs.readFileSync(new URL('../docs/vendor/vexflow.js', import.meta.url), 'utf8'), {
+    window: win,
+    globalThis: win,
+  });
+  const VF = win.Vex.Flow;
+  assert.ok(VF, 'VexFlow doit être chargé');
+
+  const mockCtx = new Proxy({}, {
+    get: (target, prop) => (prop === 'checkContext' ? () => mockCtx : () => {}),
+  });
+
+  // Test de setTempo pour toutes les signatures, en particulier les composées 6/8 et 12/8
+  for (const ts of TIME_SIGNATURES) {
+    const meter = meterInfo(ts);
+    const stave = new VF.Stave(0, 0, 400);
+    stave.addTimeSignature(meter.ts);
+
+    // Reproduit exactement le code de renderer.js
+    const dur = 'q';
+    const dots = meter.compound ? 1 : 0;
+    stave.setTempo({ name: 'Allegro', bpm: 120, duration: dur, dots }, 0);
+    stave.setContext(mockCtx);
+
+    assert.doesNotThrow(() => {
+      stave.draw();
+    }, `stave.draw() ne doit pas lancer d'erreur pour ${ts}`);
+  }
+});
+
