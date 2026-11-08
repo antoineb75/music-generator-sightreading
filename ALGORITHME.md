@@ -120,13 +120,14 @@ Selon les réglages et le niveau, des extensions sont injectées :
 Le rythme est généré **mesure par mesure et temps par temps (beat-by-beat)** à l'aide de motifs rythmiques pondérés (`BEAT_PATTERNS`).
 
 ```mermaid
-graph LR
-    subgraph Temps de 4 unités (noire)
-        P1["[4] : Noire"]
-        P2["[2, 2] : 2 Croches"]
-        P3["[3, 1] : Noire pointée - Double"]
-        P4["[1, 1, 1, 1] : 4 Doubles"]
-        P5["[2, 1, 1] : Croche - 2 Doubles"]
+flowchart LR
+    subgraph S1 ["Exemples de motifs par temps (4 unités = noire)"]
+        direction TB
+        P1["4 : Noire"]
+        P2["2 + 2 : 2 Croches"]
+        P3["3 + 1 : Noire pointée - Double"]
+        P4["1 + 1 + 1 + 1 : 4 Doubles"]
+        P5["2 + 1 + 1 : Croche - 2 Doubles"]
     end
 ```
 
@@ -154,11 +155,11 @@ Pour éviter une ligne plate ou erratique, l'algorithme génère un **arc narrat
 - **Résolution finale** : l'avant-dernière note privilégie un mouvement conjoint (degré 1 ou 6 de la gamme, sensible ou sus-tonique) se résolvant directement sur la tonique finale.
 
 ```mermaid
-xychart-beta
-    title Profil mélodique typique (Arc expressif)
-    x-axis ["Mesure 1", "Mesure 2", "Mesure 3", "Climax (65%)", "Pré-cadence", "Fin"]
-    y-axis "Hauteur mélodique" 20 --> 45
-    line [28, 30, 33, 42, 30, 28]
+flowchart LR
+    M1["1. Départ<br/>(Tonique / Quinte stable)"] --> M2["2. Ascension<br/>(Mouvements conjoints)"]
+    M2 --> M3["3. Climax (~65%)<br/>(Atteint maxD)"]
+    M3 --> M4["4. Pré-cadence<br/>(Sensible / II - Saut compensé)"]
+    M4 --> M5["5. Résolution<br/>(Tonique conclusive)"]
 ```
 
 ### 5.3 Pondération des intervalles et conduite des voix
@@ -221,7 +222,7 @@ Avant d'exporter la partition, 3 phases de validation garantissent l'absence d'e
 
 ```mermaid
 flowchart TD
-    V1["1. Clamping strict d'ambitus [minD, maxD]"] --> V2["2. Injection obligatoire des bornes extrêmes"]
+    V1["1. Clamping strict d'ambitus (minD, maxD)"] --> V2["2. Injection obligatoire des bornes extrêmes"]
     V2 --> V3["3. Contrôle de complétude métrique"]
 ```
 
