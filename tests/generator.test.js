@@ -40,12 +40,13 @@ test('toutes les combinaisons produisent des mesures complètes', () => {
               for (const m of score.measures) {
                 for (const staff of [m.treble, m.bass]) {
                   if (!staff) continue;
-                  assert.equal(staff.reduce((s, e) => s + e.dur, 0), L, `${ts} ${level} ${hands} ${key.id}`);
+                  assert.ok(Math.abs(staff.reduce((s, e) => s + e.dur, 0) - L) < 1e-6, `${ts} ${level} ${hands} ${key.id}`);
                   let pos = 0;
                   for (const e of staff) {
-                    assert.equal(e.start, pos);
+                    assert.ok(Math.abs(e.start - pos) < 1e-6);
                     pos += e.dur;
-                    assert.ok([1, 2, 3, 4, 6, 8, 12, 16, 24].includes(e.dur), `durée ${e.dur}`);
+                    const nd = e.notationDur ?? e.dur;
+                    assert.ok([1, 2, 3, 4, 6, 8, 12, 16, 24].includes(nd), `durée ${nd}`);
                     for (const n of e.notes) {
                       assert.ok(Number.isInteger(n.midi) && n.midi >= 21 && n.midi <= 108);
                       assert.ok(Math.abs(n.alter) <= 2);
@@ -454,4 +455,143 @@ test('gravure VexFlow : la signature 6/8 et les mesures composées ne génèrent
     }, `stave.draw() ne doit pas lancer d'erreur pour ${ts}`);
   }
 });
+
+test('complexité rythmique dès le niveau intermédiaire : soupirs, contretemps, triolets, duolets et rendu VexFlow', async () => {
+  const fs = await import('node:fs');
+  const vm = await import('node:vm');
+  const win = {};
+  vm.runInNewContext(fs.readFileSync(new URL('../docs/vendor/vexflow.js', import.meta.url), 'utf8'), {
+    window: win,
+    globalThis: win,
+  });
+  const VF = win.Vex.Flow;
+  const mockCtx = new Proxy({}, {
+    get: (target, prop) => (prop === 'checkContext' ? () => mockCtx : prop === 'measureText' ? () => ({ width: 10 }) : () => {}),
+  });
+  const DURATIONS = {
+    1: ['16', 0], 2: ['8', 0], 3: ['8', 1], 4: ['q', 0], 6: ['q', 1],
+    8: ['h', 0], 12: ['h', 1], 16: ['w', 0], 24: ['w', 1],
+  };
+
+  let hasRest = false;
+  let hasTriplet = false;
+  let hasDuplet = false;
+  let hasOffbeat = false;
+  let bassHasRest = false;
+  let bassHasTriplet = false;
+  let bassHasDuplet = false;
+  let bassHasOffbeat = false;
+
+  for (const level of ['intermediaire', 'avance', 'expert']) {
+    for (const ts of ['4/4', '3/4', '6/8', '2/2']) {
+      for (let seed = 1; seed <= 8; seed++) {
+        const score = generateScore(baseSettings({ timeSignature: ts, measures: 8, level, hands: 'both', bpm: 100 }), seed);
+        const bytes = midiFileBytes(score, 100);
+        assert.ok(bytes.length > 20);
+
+        const beamGroups = [new VF.Fraction(score.meter.den === 8 && score.meter.num === 3 ? 6 : score.meter.beatLen, 16)];
+        for (const m of score.measures) {
+          for (const [staff, clef] of [[m.treble, 'treble'], [m.bass, 'bass']]) {
+            if (!staff) continue;
+            const tupletGroups = new Map();
+            const tuplets = [];
+            const notes = staff.map((ev) => {
+              if (ev.rest) { hasRest = true; if (clef === 'bass') bassHasRest = true; }
+              if (ev.tuplet?.num === 3) { hasTriplet = true; if (clef === 'bass') bassHasTriplet = true; }
+              if (ev.tuplet?.num === 2) { hasDuplet = true; if (clef === 'bass') bassHasDuplet = true; }
+              if (!ev.rest && ev.start % score.meter.beatLen !== 0) { hasOffbeat = true; if (clef === 'bass') bassHasOffbeat = true; }
+
+              const [base, dots] = DURATIONS[ev.notationDur ?? ev.dur];
+              const dur = base + 'd'.repeat(dots);
+              const note = ev.rest
+                ? new VF.StaveNote({ clef, keys: [clef === 'treble' ? 'b/4' : 'd/3'], duration: `${dur}r` })
+                : new VF.StaveNote({ clef, keys: ev.notes.map(() => 'c/4'), duration: dur });
+              if (dots) VF.Dot.buildAndAttach([note], { all: true });
+              if (ev.tuplet) {
+                let grp = tupletGroups.get(ev.tuplet.id);
+                if (!grp) { grp = { meta: ev.tuplet, notes: [] }; tupletGroups.set(ev.tuplet.id, grp); }
+                grp.notes.push(note);
+              }
+              return note;
+            });
+            for (const { meta, notes: tNotes } of tupletGroups.values()) {
+              tuplets.push(new VF.Tuplet(tNotes, { num_notes: meta.num, notes_occupied: meta.occupied }));
+            }
+            const stave = new VF.Stave(0, 0, 400);
+            const voice = new VF.Voice({ num_beats: score.meter.num, beat_value: score.meter.den })
+              .setMode(VF.Voice.Mode.SOFT)
+              .addTickables(notes);
+            voice.setStave(stave);
+            const beams = VF.Beam.generateBeams(notes, { groups: beamGroups });
+            new VF.Formatter().joinVoices([voice]).format([voice], 350);
+            voice.draw(mockCtx, stave);
+            beams.forEach((b) => b.setContext(mockCtx).draw());
+            tuplets.forEach((t) => t.setContext(mockCtx).draw());
+          }
+        }
+      }
+    }
+  }
+
+  assert.ok(hasRest, 'Doit générer des soupirs / silences');
+  assert.ok(hasOffbeat, 'Doit générer des contretemps / syncopes');
+  assert.ok(hasTriplet, 'Doit générer des triolets');
+  assert.ok(hasDuplet, 'Doit générer des duolets en mesure composée');
+  assert.ok(bassHasRest, 'La main gauche doit aussi générer des soupirs / silences');
+  assert.ok(bassHasOffbeat, 'La main gauche doit aussi générer des contretemps / syncopes');
+  assert.ok(bassHasTriplet, 'La main gauche doit aussi générer des triolets');
+  assert.ok(bassHasDuplet, 'La main gauche doit aussi générer des duolets en mesure composée');
+});
+
+test('appogiatures : génération, respect de l ambitus, lecture/MIDI et gravure VexFlow', async () => {
+  const { buildNoteEvents } = await import('../docs/js/events.js');
+  const fs = await import('node:fs');
+  const vm = await import('node:vm');
+  const win = {};
+  vm.runInNewContext(fs.readFileSync(new URL('../docs/vendor/vexflow.js', import.meta.url), 'utf8'), {
+    window: win,
+    globalThis: win,
+  });
+  const VF = win.Vex.Flow;
+  const mockCtx = new Proxy({}, {
+    get: (target, prop) => (prop === 'checkContext' ? () => mockCtx : prop === 'measureText' ? () => ({ width: 10 }) : () => {}),
+  });
+
+  let foundApp = false;
+  for (const level of ['intermediaire', 'avance', 'expert']) {
+    for (let seed = 1; seed <= 12; seed++) {
+      const score = generateScore(baseSettings({ timeSignature: '4/4', measures: 8, level, hands: 'both', minNote: 'C3', maxNote: 'G5' }), seed);
+      const minD = score.params.minD;
+      const maxD = score.params.maxD;
+      for (const m of score.measures) {
+        for (const ev of (m.treble || [])) {
+          if (ev.appoggiatura) {
+            foundApp = true;
+            assert.ok(ev.appoggiatura.D >= minD && ev.appoggiatura.D <= maxD, 'appogiature dans l ambitus');
+            assert.notEqual(ev.appoggiatura.D, ev.notes[0].D);
+          }
+        }
+      }
+      const noteEvs = buildNoteEvents(score);
+      assert.ok(noteEvs.length > 0);
+      const bytes = midiFileBytes(score, 100);
+      assert.ok(bytes.length > 20);
+    }
+  }
+  assert.ok(foundApp, 'Doit générer des appogiatures à partir du niveau intermédiaire');
+
+  // Vérification gravure VexFlow d'une appogiature avec altération accidentelle
+  const stave = new VF.Stave(0, 0, 400).addClef('treble').addTimeSignature('4/4');
+  const n1 = new VF.StaveNote({ clef: 'treble', keys: ['c/5'], duration: 'h', auto_stem: true });
+  const gn = new VF.GraceNote({ clef: 'treble', keys: ['b/4'], duration: '8', slash: false });
+  gn.addModifier(new VF.Accidental('#'), 0);
+  n1.addModifier(new VF.GraceNoteGroup([gn], false), 0);
+  const n2 = new VF.StaveNote({ clef: 'treble', keys: ['d/5'], duration: 'h', auto_stem: true });
+  const voice = new VF.Voice({ num_beats: 4, beat_value: 4 }).setMode(VF.Voice.Mode.SOFT).addTickables([n1, n2]);
+  voice.setStave(stave);
+  new VF.Formatter().joinVoices([voice]).format([voice], 350);
+  assert.doesNotThrow(() => voice.draw(mockCtx, stave));
+});
+
+
 

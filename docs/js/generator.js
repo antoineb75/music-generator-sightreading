@@ -226,7 +226,9 @@ function decompose(len) {
 
 // ── Rythme pianistique ──────────────────────────────────────
 
-// Motifs de temps (beat patterns) – Chaque motif fait exactement beatLen
+// Motifs de temps (beat patterns) – Chaque motif fait exactement beatLen.
+// Les valeurs négatives représentent des silences (ex: -2 = demi-soupir, -4 = soupir).
+// Les objets { tuplet: { num, occupied }, items } représentent des N-olets (triolets, duolets).
 const BEAT_PATTERNS = {
   4: {
     initiation: [[[4], 1]],
@@ -235,25 +237,42 @@ const BEAT_PATTERNS = {
       [[2, 2], 2],
     ],
     intermediaire: [
-      [[4], 2.5],
-      [[2, 2], 3],
-      [[3, 1], 1],
+      [[4], 2.2],
+      [[2, 2], 2.8],
+      [[3, 1], 1.2],
+      [[-2, 2], 1.3],                                        // contretemps (demi-soupir + croche)
+      [[-4], 0.45],                                          // soupir
+      [{ tuplet: { num: 3, occupied: 2 }, items: [2, 2, 2] }, 1.1], // triolet de croches
     ],
     avance: [
-      [[4], 2],
-      [[2, 2], 2.5],
-      [[1, 1, 1, 1], 1.5],
-      [[2, 1, 1], 1],
-      [[1, 1, 2], 1],
-      [[3, 1], 1],
+      [[4], 1.6],
+      [[2, 2], 2.0],
+      [[1, 1, 1, 1], 1.3],
+      [[2, 1, 1], 1.0],
+      [[1, 1, 2], 1.0],
+      [[3, 1], 1.0],
+      [[1, 2, 1], 1.0],                                      // syncope interne au temps
+      [[-2, 2], 1.2],                                        // contretemps
+      [[-2, 1, 1], 0.8],                                     // contretemps + 2 doubles
+      [[-4], 0.45],                                          // soupir
+      [{ tuplet: { num: 3, occupied: 2 }, items: [2, 2, 2] }, 1.4],   // triolet de croches
+      [{ tuplet: { num: 3, occupied: 2 }, items: [-2, 2, 2] }, 0.6],  // triolet avec silence
     ],
     expert: [
-      [[4], 1.5],
-      [[2, 2], 2],
-      [[1, 1, 1, 1], 2.5],
-      [[1, 1, 2], 1.2],
-      [[2, 1, 1], 1.2],
-      [[3, 1], 1],
+      [[4], 1.1],
+      [[2, 2], 1.6],
+      [[1, 1, 1, 1], 1.8],
+      [[1, 1, 2], 1.1],
+      [[2, 1, 1], 1.1],
+      [[3, 1], 1.0],
+      [[1, 2, 1], 1.3],                                      // syncope interne
+      [[-2, 2], 1.2],                                        // contretemps
+      [[-2, 1, 1], 0.9],
+      [[-1, 1, 2], 0.7],                                     // quart de soupir + double + croche
+      [[-4], 0.4],
+      [{ tuplet: { num: 3, occupied: 2 }, items: [2, 2, 2] }, 1.6],   // triolet de croches
+      [{ tuplet: { num: 3, occupied: 2 }, items: [-2, 2, 2] }, 0.7],  // triolet acéphale
+      [{ tuplet: { num: 3, occupied: 2 }, items: [2, -2, 2] }, 0.5],  // triolet syncopé
     ],
   },
   6: {
@@ -264,32 +283,47 @@ const BEAT_PATTERNS = {
       [[2, 2, 2], 1.5],
     ],
     intermediaire: [
-      [[6], 2],
-      [[4, 2], 2.5],
-      [[2, 2, 2], 2.5],
-      [[2, 4], 1],
+      [[6], 1.8],
+      [[4, 2], 2.2],
+      [[2, 2, 2], 2.2],
+      [[2, 4], 1.0],
+      [[-2, 2, 2], 1.0],                                     // contretemps ternaire
+      [[2, -2, 2], 0.8],
+      [[-6], 0.4],                                           // soupir pointé
+      [{ tuplet: { num: 2, occupied: 3 }, items: [2, 2] }, 1.2], // duolet de croches
     ],
     avance: [
-      [[4, 2], 2],
-      [[2, 2, 2], 2.5],
-      [[3, 1, 2], 1.5],
-      [[6], 1],
-      [[1, 1, 2, 2], 1],
+      [[4, 2], 1.8],
+      [[2, 2, 2], 2.0],
+      [[3, 1, 2], 1.4],
+      [[6], 0.9],
+      [[1, 1, 2, 2], 1.0],
+      [[-2, 2, 2], 1.0],
+      [[-2, 4], 0.8],
+      [[2, -2, 2], 0.8],
+      [[-6], 0.4],
+      [{ tuplet: { num: 2, occupied: 3 }, items: [2, 2] }, 1.5], // duolet de croches
     ],
     expert: [
-      [[2, 2, 2], 2],
-      [[3, 1, 2], 2],
-      [[1, 1, 1, 1, 2], 1.5],
-      [[4, 2], 1.5],
-      [[6], 1],
+      [[2, 2, 2], 1.7],
+      [[3, 1, 2], 1.7],
+      [[1, 1, 1, 1, 2], 1.3],
+      [[4, 2], 1.2],
+      [[6], 0.8],
+      [[-2, 2, 2], 1.0],
+      [[-2, 4], 0.9],
+      [[2, -2, 2], 0.9],
+      [[-2, 1, 1, 2], 0.7],
+      [[-6], 0.4],
+      [{ tuplet: { num: 2, occupied: 3 }, items: [2, 2] }, 1.7], // duolet de croches
     ],
   },
   2: {
     initiation: [[[2], 1]],
     debutant: [[[2], 3], [[1, 1], 1]],
-    intermediaire: [[[2], 2], [[1, 1], 2]],
-    avance: [[[2], 1.5], [[1, 1], 2], [[1, 1], 1]],
-    expert: [[[1, 1], 2.5], [[2], 1]],
+    intermediaire: [[[2], 1.8], [[1, 1], 1.8], [[-1, 1], 0.8]],
+    avance: [[[2], 1.4], [[1, 1], 1.8], [[-1, 1], 1.0], [[-2], 0.35]],
+    expert: [[[1, 1], 2.0], [[2], 1.0], [[-1, 1], 1.1], [[-2], 0.35]],
   },
   8: {
     initiation: [[[8], 1]],
@@ -298,26 +332,83 @@ const BEAT_PATTERNS = {
       [[4, 4], 3],
     ],
     intermediaire: [
-      [[8], 1.5],
-      [[4, 4], 3],
+      [[8], 1.4],
+      [[4, 4], 2.5],
       [[4, 2, 2], 1.5],
+      [[2, 4, 2], 1.2],                                      // syncope
+      [[-4, 4], 1.0],                                        // contretemps
+      [[-2, 2, 4], 0.8],
+      [{ tuplet: { num: 3, occupied: 2 }, items: [4, 4, 4] }, 1.0], // triolet de noires
     ],
     avance: [
-      [[4, 4], 2.5],
-      [[4, 2, 2], 2],
-      [[2, 2, 4], 1.5],
-      [[8], 1],
+      [[4, 4], 1.8],
+      [[4, 2, 2], 1.8],
+      [[2, 2, 4], 1.4],
+      [[8], 0.8],
+      [[2, 4, 2], 1.4],
+      [[-4, 4], 1.0],
+      [[-2, 2, 4], 1.0],
+      [{ tuplet: { num: 3, occupied: 2 }, items: [4, 4, 4] }, 1.4], // triolet de noires
     ],
     expert: [
-      [[4, 2, 2], 2],
-      [[2, 2, 2, 2], 2],
-      [[4, 4], 1.5],
-      [[8], 1],
+      [[4, 2, 2], 1.7],
+      [[2, 2, 2, 2], 1.7],
+      [[4, 4], 1.2],
+      [[8], 0.8],
+      [[2, 4, 2], 1.5],
+      [[-4, 4], 1.0],
+      [[-2, 2, 4], 1.0],
+      [[2, 2, -2, 2], 0.8],
+      [{ tuplet: { num: 3, occupied: 2 }, items: [4, 4, 4] }, 1.6], // triolet de noires
     ],
   },
 };
 
-function genMeasureRhythm(rng, meter, level, isLast) {
+// Motifs à cheval sur 2 temps (8 unités quand beatLen === 4) : syncopes, contretemps longs, triolets de noires
+const MULTI_BEAT_PATTERNS_4 = {
+  intermediaire: [
+    [[2, 4, 2], 1.5],                                        // syncope croche - noire - croche
+    [[-4, 4], 1.0],                                          // contretemps soupir - noire
+    [[-2, 2, -2, 2], 0.8],                                   // suite de contretemps
+  ],
+  avance: [
+    [[2, 4, 2], 1.6],
+    [[-4, 4], 1.0],
+    [[-2, 2, -2, 2], 1.0],
+    [{ tuplet: { num: 3, occupied: 2 }, items: [4, 4, 4] }, 1.2], // triolet de noires sur 2 temps
+  ],
+  expert: [
+    [[2, 4, 2], 1.6],
+    [[-4, 4], 1.0],
+    [[-2, 2, -2, 2], 1.2],
+    [[2, 2, -2, 4 - 2], 0.7],
+    [{ tuplet: { num: 3, occupied: 2 }, items: [4, 4, 4] }, 1.5], // triolet de noires sur 2 temps
+  ],
+};
+
+function expandPattern(pattern, startPos, span, tupletId) {
+  if (Array.isArray(pattern)) {
+    const out = [];
+    let p = startPos;
+    for (const raw of pattern) {
+      const dur = Math.abs(raw);
+      out.push({ start: p, dur, rest: raw < 0 });
+      p += dur;
+    }
+    return out;
+  }
+  const { tuplet, items } = pattern;
+  const noteDur = span / items.length;
+  return items.map((raw, idx) => ({
+    start: startPos + idx * noteDur,
+    dur: noteDur,
+    notationDur: Math.abs(raw),
+    tuplet: { id: tupletId, num: tuplet.num, occupied: tuplet.occupied },
+    rest: raw < 0,
+  }));
+}
+
+function genMeasureRhythm(rng, meter, level, isLast, m = 0) {
   const L = meter.measureLen;
   const B = meter.beatLen;
   const nBeats = L / B;
@@ -355,17 +446,42 @@ function genMeasureRhythm(rng, meter, level, isLast) {
     }
   }
 
-  // Construction beat par beat
+  // Construction beat par beat (avec motifs multi-temps possibles dès le niveau intermédiaire)
   const patterns = BEAT_PATTERNS[B][level] || BEAT_PATTERNS[4][level];
+  const multiPatterns = B === 4 ? MULTI_BEAT_PATTERNS_4[level] : null;
+  const multiChance = level === 'expert' ? 0.35 : level === 'avance' ? 0.28 : 0.2;
+
   const evs = [];
   let pos = 0;
-  for (let b = 0; b < nBeats; b++) {
-    const chosen = rng.weighted(patterns);
-    for (const d of chosen) {
-      evs.push({ start: pos, dur: d, rest: false });
-      pos += d;
+  let b = 0;
+  while (b < nBeats) {
+    const canMulti = multiPatterns && nBeats - b >= 2 && !(m === 0 && b === 0);
+    if (canMulti && rng.chance(multiChance)) {
+      const chosen = rng.weighted(multiPatterns);
+      evs.push(...expandPattern(chosen, pos, 2 * B, `tp-${m}-${b}`));
+      pos += 2 * B;
+      b += 2;
+      continue;
     }
+
+    let pool = patterns;
+    // Éviter de commencer la toute première mesure par un silence complet sur le 1er temps
+    if (m === 0 && b === 0) {
+      const filtered = patterns.filter(([p]) => !(Array.isArray(p) && p.length === 1 && p[0] < 0));
+      if (filtered.length) pool = filtered;
+    }
+
+    const chosen = rng.weighted(pool);
+    evs.push(...expandPattern(chosen, pos, B, `tp-${m}-${b}`));
+    pos += B;
+    b += 1;
   }
+
+  // Garantir qu'aucune mesure ne soit intégralement silencieuse
+  if (evs.every((e) => e.rest)) {
+    evs[0].rest = false;
+  }
+
   return evs;
 }
 
@@ -394,7 +510,7 @@ function planHarmony(rng, meter, level, n, mode, enrichActive, extensionType, mi
   const allowed = ALLOWED_DEGREES[level].filter((d) => !(mode === 'minor' && d === 2));
   const minDegree = degreeOf(minD, key);
 
-  // Construction d'une belle phrase musicale
+  // Construction d'une phrase harmonique fluide et cadentielle
   slots.forEach((s, i) => {
     if (i === 0) {
       s.degree = 0; // Affirmation de la tonique au début
@@ -402,16 +518,24 @@ function planHarmony(rng, meter, level, n, mode, enrichActive, extensionType, mi
       s.degree = 0; // Résolution conclusive sur la tonique à la fin
     } else if (i === slots.length - 2) {
       s.degree = 4; // Cadence V → I
+    } else if (i === slots.length - 3 && slots.length >= 4) {
+      // Pré-dominante naturelle avant la cadence finale (ii ou IV)
+      const preDom = [1, 3].filter((d) => allowed.includes(d) && d !== slots[i - 1]?.degree);
+      s.degree = preDom.length ? rng.pick(preDom) : (allowed.includes(3) ? 3 : 4);
     } else {
-      // Choix harmonique fluide (I, IV, V, ii, vi)
+      // Choix harmonique fluide évitant les répétitions statiques
       const prev = slots[i - 1].degree;
-      let cands = allowed;
-      if (prev === 4) cands = [0, 5, 3].filter((d) => allowed.includes(d));
-      else if (prev === 0) cands = [3, 4, 5, 1].filter((d) => allowed.includes(d));
-      else if (prev === 1) cands = [4].filter((d) => allowed.includes(d));
-      else if (prev === 3) cands = [4, 0, 1].filter((d) => allowed.includes(d));
-      else if (prev === 5) cands = [1, 3, 4].filter((d) => allowed.includes(d));
-      s.degree = cands.length ? rng.pick(cands) : 0;
+      let weightedCands;
+      if (prev === 0) weightedCands = [[3, 3], [5, 3], [1, 2], [4, 2], [2, 1]];
+      else if (prev === 1) weightedCands = [[4, 4], [2, 1], [5, 1]];
+      else if (prev === 2) weightedCands = [[5, 3], [3, 3], [1, 1]];
+      else if (prev === 3) weightedCands = [[4, 3], [1, 2.5], [0, 2], [5, 1]];
+      else if (prev === 4) weightedCands = [[0, 3.5], [5, 2.5], [3, 1.5]];
+      else if (prev === 5) weightedCands = [[1, 3], [3, 3], [4, 2], [2, 1]];
+      else weightedCands = allowed.map((d) => [d, 1]);
+
+      const filtered = weightedCands.filter(([d]) => allowed.includes(d) && d !== prev);
+      s.degree = filtered.length ? rng.weighted(filtered) : 0;
     }
 
     s.seventh = false;
@@ -539,6 +663,8 @@ function genMelody(rng, ctx, rhythms, clef, hand) {
   let prev2 = null;
   let lastInt = 0;
   let dir = rng.chance(0.5) ? 1 : -1;
+  const themeIntervals = [];
+  const halfMeasure = n >= 4 ? Math.floor(n / 2) - 1 : -1;
 
   pitched.forEach(({ m, ev }, i) => {
     const chord = chordAt(slots, m, ev.start);
@@ -575,6 +701,11 @@ function genMelody(rng, ctx, rhythms, clef, hand) {
     } else {
       const strong = ev.start % meter.beatLen === 0;
       const progress = i / N;
+      const prevDeg = degreeOf(prev, key);
+      const isHalfCadenceEnd = m === halfMeasure && pitched[i + 1]?.m > halfMeasure;
+      const motifIdx = (n >= 6 && m === Math.floor(n / 2)) ? i - pitched.findIndex((p) => p.m === Math.floor(n / 2)) : -1;
+      const expectedMotifInt = motifIdx > 0 && motifIdx <= themeIntervals.length ? themeIntervals[motifIdx - 1] : null;
+
       const weights = [];
       for (const x of range) {
         const iv = Math.abs(x - prev);
@@ -582,16 +713,28 @@ function genMelody(rng, ctx, rhythms, clef, hand) {
         if (!w) continue;
         if (iv === 0 && prev === prev2) continue; // Pas 3 fois la même note
         const ct = isCT(x);
-        w *= strong ? (ct ? 1.2 : 0.1) : ct ? 1 : 0.9;
+        const xDeg = degreeOf(x, key);
+        w *= strong ? (ct ? 1.3 : 0.1) : ct ? 1 : 0.85;
         if ((x - prev) * dir > 0) w *= 1.8;
+
+        // Éviter les sauts de triton (degré 3 <-> degré 6) et les sauts de 7e durs
+        if (iv >= 3 && ((prevDeg === 3 && xDeg === 6) || (prevDeg === 6 && xDeg === 3))) w *= 0.15;
+        if (iv === 6) w *= 0.25;
+
+        // Rappel motivique en début de 2e phrase (A')
+        if (expectedMotifInt != null && x - prev === expectedMotifInt) w *= 2.0;
+
+        // Respiration sur la demi-cadence (note stable de V)
+        if (isHalfCadenceEnd && ct) w *= 2.5;
+
         // Résolution de saut en sens contraire
         if (Math.abs(lastInt) >= 3) {
           if (iv >= 1 && iv <= 2 && Math.sign(x - prev) === -Math.sign(lastInt)) w *= 3.5;
           if (iv >= 3) w *= 0.2;
         }
-        // Préparation et montée vers le climax
-        if (targetClimaxIdx > 0 && i < targetClimaxIdx && targetClimaxIdx - i <= 3) {
-          if (x > prev) w *= 3;
+        // Préparation et montée progressive vers le climax
+        if (targetClimaxIdx > 0 && i < targetClimaxIdx && targetClimaxIdx - i <= 4) {
+          if (Math.abs(maxD - x) < Math.abs(maxD - prev)) w *= 2.6;
         }
         if (progress >= 0.45 && progress <= 0.75) {
           if (x > midD) w *= 1.4;
@@ -604,6 +747,7 @@ function genMelody(rng, ctx, rhythms, clef, hand) {
     }
 
     lastInt = prev == null ? 0 : D - prev;
+    if (i >= 1 && i <= 4) themeIntervals.push(lastInt);
     prev2 = prev;
     prev = D;
     if (i === targetClimaxIdx) dir = -1;
@@ -645,11 +789,36 @@ function genMelody(rng, ctx, rhythms, clef, hand) {
 
   rhythms.forEach((rhythm, m) => {
     rhythm.forEach((ev, i) => {
-      const out = { id: `${hand}-${m}-${i}`, hand, start: ev.start, dur: ev.dur, rest: !!ev.rest, notes: [] };
+      const out = {
+        id: `${hand}-${m}-${i}`,
+        hand,
+        start: ev.start,
+        dur: ev.dur,
+        ...(ev.notationDur != null ? { notationDur: ev.notationDur } : {}),
+        ...(ev.tuplet ? { tuplet: ev.tuplet } : {}),
+        rest: !!ev.rest,
+        notes: [],
+      };
       if (!ev.rest) {
         const idx = pitched.findIndex((p) => p.ev === ev);
         const alter = alterOf[idx];
         out.notes.push({ D: ev.D, alter, midi: toMidi(ev.D, alter) });
+
+        // Appoggiature expressive (dès le niveau intermédiaire, sur notes longues / temps forts)
+        const appProb = level === 'expert' ? 0.28 : level === 'avance' ? 0.22 : level === 'intermediaire' ? 0.14 : 0;
+        const canApp = appProb > 0 && idx > 0 && m < n - 1 && ev.dur >= 4 && !ev.tuplet
+          && (ev.start % meter.beatLen === 0 || ev.dur >= 6);
+        if (canApp && rng.chance(appProb)) {
+          const preferUpper = rng.chance(0.65);
+          let appD = preferUpper ? ev.D + 1 : ev.D - 1;
+          if (appD > maxD) appD = ev.D - 1;
+          if (appD < minD) appD = ev.D + 1;
+          if (appD >= minD && appD <= maxD && appD !== ev.D) {
+            const appDeg = degreeOf(appD, key);
+            const appAlter = appD < ev.D ? scale.melodyUp[appDeg] : scale.harmony[appDeg];
+            out.appoggiatura = { D: appD, alter: appAlter, midi: toMidi(appD, appAlter) };
+          }
+        }
 
         if (isEnrichedRight) {
           const isLastNote = (m === n - 1 && i === rhythm.length - 1);
@@ -717,6 +886,18 @@ function genAccompaniment(rng, ctx) {
   if (minSlotIdx === -1) minSlotIdx = 0;
 
   const perMeasure = Array.from({ length: n }, () => []);
+  let prevBaseD = null;
+  let prevUpperCenter = null;
+
+  const closestOctave = (letter, target, loBound, hiBound) => {
+    const cands = [];
+    for (let oct = 0; oct <= 8; oct++) {
+      const cand = oct * 7 + letter;
+      if (cand >= loBound && cand <= hiBound) cands.push(cand);
+    }
+    if (!cands.length) return fitD(lowestDWithLetter(letter, target));
+    return cands.reduce((best, c) => (Math.abs(c - target) < Math.abs(best - target) ? c : best), cands[0]);
+  };
 
   for (let slotIdx = 0; slotIdx < slots.length; slotIdx++) {
     const slot = slots[slotIdx];
@@ -726,25 +907,48 @@ function genAccompaniment(rng, ctx) {
 
     // Si c'est le slot dédié ou que le degré a la même lettre que minD : basse ancrée sur minD
     const isMinSlot = (slotIdx === minSlotIdx || letterOfDeg(slot.degree) === minLetter);
-    const r = isMinSlot ? minD : fitD(lowestDWithLetter(letterOfDeg(slot.degree), baseTarget));
+    const r = isMinSlot
+      ? minD
+      : closestOctave(letterOfDeg(slot.degree), prevBaseD ?? baseTarget, minD, Math.max(minD, Math.min(pivot - 2, baseTarget + 5)));
+    prevBaseD = r;
 
     const degs = chordDegrees(slot);
     const upperDegs = slot.seventh || slot.ninth ? degs.slice(1) : degs;
     const upperTarget = Math.max(minD + 2, Math.min(pivot, 21));
+    const voiceTarget = prevUpperCenter ?? upperTarget;
 
-    // Voicings médium compacts et sonores (écart max <= 7 pour être jouables d'une seule main)
-    const upper = upperDegs.map((d) => fitD(lowestDWithLetter(letterOfDeg(d), upperTarget))).sort((a, b) => a - b);
-    const ninthD = fitD(lowestDWithLetter(letterOfDeg((slot.degree + 1) % 7), upperTarget));
-    const seventhD = fitD(lowestDWithLetter(letterOfDeg((slot.degree + 6) % 7), upperTarget));
+    // Voicings médium avec conduite des voix (voice leading) et écart <= 7 degrés
+    let upper = upperDegs
+      .map((d) => closestOctave(letterOfDeg(d), voiceTarget, Math.max(minD, r + 1), Math.min(maxD, pivot + 2)))
+      .sort((a, b) => a - b);
+    if (upper.length > 1 && upper.at(-1) - upper[0] > 7) {
+      upper = upperDegs.map((d) => fitD(lowestDWithLetter(letterOfDeg(d), upperTarget))).sort((a, b) => a - b);
+    }
+    if (upper.length) {
+      prevUpperCenter = upper.reduce((s, d) => s + d, 0) / upper.length;
+    }
+    const ninthD = fitD(lowestDWithLetter(letterOfDeg((slot.degree + 1) % 7), voiceTarget));
+    const seventhD = fitD(lowestDWithLetter(letterOfDeg((slot.degree + 6) % 7), voiceTarget));
 
     const evs = [];
-    const add = (pos, dur, Ds) => {
+    const add = (pos, dur, Ds, rest = false, extra = {}) => {
+      if (rest) {
+        evs.push({ start: slot.start + pos, dur, Ds: [], rest: true, ...extra });
+        return;
+      }
       let filtered = [...new Set(Ds.map(fitD))].sort((a, b) => a - b);
       // Règle anatomique : une main ne peut pas plaquer plus d'une octave (<= 8 degrés)
       if (filtered.length > 1 && filtered.at(-1) - filtered[0] > 8) {
         filtered = [filtered[0]];
       }
-      evs.push({ start: slot.start + pos, dur, Ds: filtered });
+      evs.push({ start: slot.start + pos, dur, Ds: filtered, rest: false, ...extra });
+    };
+    const addTuplet = (pos, span, num, occupied, notationDur, items, tag) => {
+      const noteDur = span / items.length;
+      const tuplet = { id: `lh-${slot.m}-${slotIdx}-${tag}`, num, occupied };
+      items.forEach((item, idx) => {
+        add(pos + idx * noteDur, noteDur, item.Ds || [], !!item.rest, { notationDur, tuplet });
+      });
     };
     const fill = (Ds) => {
       let p = 0;
@@ -764,17 +968,60 @@ function genAccompaniment(rng, ctx) {
       }
     } else if (meter.num === 3 && meter.den === 4) {
       // ── Style Valse classique (3/4) ──────────────────────────
-      if (level === 'initiation') {
-        fill([r]);
+      if (level === 'initiation' || level === 'debutant') {
+        if (level === 'initiation') fill([r]);
+        else {
+          add(0, 4, [r]);
+          add(4, 4, upper);
+          add(8, 4, upper);
+        }
+      } else if (level === 'intermediaire') {
+        if (rng.chance(0.3)) {
+          // Valse avec contretemps (demi-soupir + accord) sur le 2e temps
+          add(0, 4, [r]);
+          add(4, 2, [], true);
+          add(6, 2, upper);
+          add(8, 4, upper);
+        } else {
+          add(0, 4, [r]);
+          add(4, 4, upper);
+          add(8, 4, upper);
+        }
       } else {
-        add(0, 4, [r]);
-        add(4, 4, upper);
-        add(8, 4, upper);
+        // Avancé / Virtuose : valse syncopée, contretemps ou triolet d'arpège
+        const roll = rng.next();
+        if (roll < 0.35) {
+          add(0, 4, [r]);
+          add(4, 2, [], true);
+          add(6, 2, upper);
+          add(8, 2, [], true);
+          add(10, 2, upper);
+        } else if (roll < 0.65) {
+          add(0, 4, [r]);
+          addTuplet(4, 4, 3, 2, 2, [
+            { Ds: [r + 4] },
+            { Ds: [upper[0] ?? (r + 2)] },
+            { Ds: [upper[upper.length - 1] ?? (r + 4)] },
+          ], 'w3');
+          add(8, 4, upper);
+        } else {
+          add(0, 4, [r]);
+          add(4, 4, upper);
+          add(8, 4, upper);
+        }
       }
     } else if (meter.num === 3 && meter.den === 8) {
       // ── Style Trois Croches (3/8) ───────────────────────────
       if (level === 'initiation' || level === 'debutant') {
         fill([r]);
+      } else if (level !== 'intermediaire' && rng.chance(0.35)) {
+        add(0, 2, [r]);
+        add(2, 2, [], true);
+        add(4, 2, upper);
+      } else if (level === 'intermediaire' && rng.chance(0.25)) {
+        add(0, 2, [r]);
+        add(2, 2, [], true);
+        add(4, 2, upper);
       } else {
         add(0, 2, [r]);
         add(2, 2, upper);
@@ -788,12 +1035,28 @@ function genAccompaniment(rng, ctx) {
           add(b * 6, 6, [b === 0 ? r : (b % 2 === 0 ? r : r + 4)]);
         }
       } else {
-        // Arpège fluide balancé par temps de 6
         const nBeats = Math.floor(slot.len / 6);
+        const dupletChance = level === 'intermediaire' ? 0.22 : 0.28;
+        const offbeatChance = level === 'intermediaire' ? 0.18 : 0.28;
         for (let b = 0; b < nBeats; b++) {
-          add(b * 6, 2, [r]);
-          add(b * 6 + 2, 2, [upper[0] ?? (r + 4)]);
-          add(b * 6 + 4, 2, [upper[1] ?? (r + 7)]);
+          const roll = rng.next();
+          if (roll < dupletChance) {
+            // Duolet de croches en main gauche (2 croches pour 3)
+            addTuplet(b * 6, 6, 2, 3, 2, [
+              { Ds: [b === 0 ? r : (r + 4)] },
+              { Ds: upper },
+            ], `d-${b}`);
+          } else if (roll < dupletChance + offbeatChance) {
+            // Contretemps ternaire avec silence
+            add(b * 6, 2, [b === 0 ? r : (r + 4)]);
+            add(b * 6 + 2, 2, [], true);
+            add(b * 6 + 4, 2, upper);
+          } else {
+            // Arpège fluide balancé par temps de 6
+            add(b * 6, 2, [r]);
+            add(b * 6 + 2, 2, [upper[0] ?? (r + 4)]);
+            add(b * 6 + 4, 2, [upper[1] ?? (r + 7)]);
+          }
         }
       }
     } else {
@@ -808,11 +1071,35 @@ function genAccompaniment(rng, ctx) {
           for (let b = 0; b < nBeats; b++) add(b * 4, 4, [r]);
         }
       } else if (level === 'intermediaire') {
-        if (slot.len === 16 && rng.chance(0.65)) {
+        const roll = rng.next();
+        if (slot.len === 16 && roll < 0.45) {
           // Basse d'Alberti classique
           const albSeq = [r, upper[upper.length - 1] ?? (r + 4), upper[0] ?? (r + 2), upper[upper.length - 1] ?? (r + 4)];
           for (let p = 0, k = 0; p < slot.len; p += 2, k++) {
             add(p, 2, [albSeq[k % albSeq.length]]);
+          }
+        } else if (slot.len >= 8 && slot.len % 4 === 0 && roll < 0.65) {
+          // Contretemps avec demi-soupirs (basse sur le 1er temps, accords sur les contretemps)
+          add(0, 4, [r]);
+          const nBeats = Math.floor(slot.len / 4);
+          for (let b = 1; b < nBeats; b++) {
+            add(b * 4, 2, [], true);
+            add(b * 4 + 2, 2, upper);
+          }
+        } else if (slot.len >= 8 && slot.len % 4 === 0 && roll < 0.8) {
+          // Basse puis triolet d'arpège
+          add(0, 4, [r]);
+          const nBeats = Math.floor(slot.len / 4);
+          for (let b = 1; b < nBeats; b++) {
+            if (b % 2 === 1) {
+              addTuplet(b * 4, 4, 3, 2, 2, [
+                { Ds: [r + 4] },
+                { Ds: [upper[0] ?? (r + 2)] },
+                { Ds: [upper[upper.length - 1] ?? (r + 4)] },
+              ], `t-${b}`);
+            } else {
+              add(b * 4, 4, [r]);
+            }
           }
         } else {
           // Stride : Temps 1 basse, temps 2 accord
@@ -824,10 +1111,51 @@ function genAccompaniment(rng, ctx) {
         }
       } else {
         // Niveaux Avancé et Virtuose
-        if (slot.len >= 8 && rng.chance(0.6)) {
+        const roll = rng.next();
+        if (slot.len >= 8 && roll < 0.3) {
           const arp = [r, r + 4, upper[0] ?? seventhD, upper[1] ?? ninthD];
           for (let p = 0, k = 0; p < slot.len; p += 2, k++) {
             add(p, 2, [arp[k % arp.length]]);
+          }
+        } else if (slot.len >= 8 && slot.len % 4 === 0 && roll < 0.55) {
+          // Accompagnement en contretemps (basse sur le 1er temps, accords sur les contretemps)
+          add(0, 4, [r]);
+          const nBeats = Math.floor(slot.len / 4);
+          for (let b = 1; b < nBeats; b++) {
+            add(b * 4, 2, [], true);
+            add(b * 4 + 2, 2, upper);
+          }
+        } else if (slot.len >= 8 && slot.len % 8 === 0 && roll < 0.78) {
+          // Syncope pianistique sur 2 temps : [2, 4, 2]
+          const nPairs = Math.floor(slot.len / 8);
+          for (let k = 0; k < nPairs; k++) {
+            add(k * 8, 2, [r]);
+            add(k * 8 + 2, 4, upper);
+            add(k * 8 + 6, 2, [r + 4]);
+          }
+        } else if (slot.len >= 8 && slot.len % 4 === 0 && roll < 0.92) {
+          // Arpèges en triolets de croches (avec silence occasionnel en virtuose)
+          const nBeats = Math.floor(slot.len / 4);
+          for (let b = 0; b < nBeats; b++) {
+            if (b === 0) {
+              addTuplet(0, 4, 3, 2, 2, [
+                { Ds: [r] },
+                { Ds: [r + 4] },
+                { Ds: [upper[0] ?? seventhD] },
+              ], `t-${b}`);
+            } else if (level === 'expert' && rng.chance(0.35)) {
+              addTuplet(b * 4, 4, 3, 2, 2, [
+                { Ds: [], rest: true },
+                { Ds: upper },
+                { Ds: [upper[1] ?? ninthD] },
+              ], `t-${b}`);
+            } else {
+              addTuplet(b * 4, 4, 3, 2, 2, [
+                { Ds: [r + 4] },
+                { Ds: [upper[0] ?? (r + 2)] },
+                { Ds: [upper[1] ?? ninthD] },
+              ], `t-${b}`);
+            }
           }
         } else {
           const nBeats = Math.floor(slot.len / 4);
@@ -846,12 +1174,26 @@ function genAccompaniment(rng, ctx) {
     evs
       .sort((a, b) => a.start - b.start)
       .map((ev, i) => {
+        if (ev.rest) {
+          return {
+            id: `left-${m}-${i}`,
+            hand: 'left',
+            start: ev.start,
+            dur: ev.dur,
+            ...(ev.notationDur != null ? { notationDur: ev.notationDur } : {}),
+            ...(ev.tuplet ? { tuplet: ev.tuplet } : {}),
+            rest: true,
+            notes: [],
+          };
+        }
         const Ds = [...new Set(ev.Ds)].sort((a, b) => a - b);
         return {
           id: `left-${m}-${i}`,
           hand: 'left',
           start: ev.start,
           dur: ev.dur,
+          ...(ev.notationDur != null ? { notationDur: ev.notationDur } : {}),
+          ...(ev.tuplet ? { tuplet: ev.tuplet } : {}),
           rest: false,
           notes: Ds.map((D) => {
             const alter = scale.harmony[degreeOf(D, key)] ?? 0;
@@ -890,7 +1232,21 @@ export function generateScore(settings, seed) {
     extensionType: params.extensionType,
   };
 
-  const rhythms = Array.from({ length: n }, (_, m) => genMeasureRhythm(rng, meter, params.level, m === n - 1));
+  const halfIdx = n >= 6 ? Math.floor(n / 2) : -1;
+  const rhythms = [];
+  for (let m = 0; m < n; m++) {
+    if (m === halfIdx && m < n - 1 && rng.chance(0.45)) {
+      // Rappel rythmique du motif initial en début de 2e phrase (A')
+      rhythms.push(
+        rhythms[0].map((ev, idx) => ({
+          ...ev,
+          ...(ev.tuplet ? { tuplet: { ...ev.tuplet, id: `tp-${m}-r${idx}` } } : {}),
+        }))
+      );
+    } else {
+      rhythms.push(genMeasureRhythm(rng, meter, params.level, m === n - 1, m));
+    }
+  }
 
   let treble = null;
   let bass = null;
@@ -925,6 +1281,9 @@ export function generateScore(settings, seed) {
           }
         }
         ev.notes.sort((a, b) => a.D - b.D);
+        if (ev.appoggiatura && (ev.appoggiatura.D < params.minD || ev.appoggiatura.D > params.maxD)) {
+          delete ev.appoggiatura;
+        }
       }
     }
   });
@@ -997,7 +1356,7 @@ export function generateScore(settings, seed) {
     for (const staff of [ms.treble, ms.bass]) {
       if (!staff) continue;
       const total = staff.reduce((s, e) => s + e.dur, 0);
-      if (total !== meter.measureLen) console.warn(`Mesure ${ms.index + 1} incomplète : ${total}/${meter.measureLen}`);
+      if (Math.abs(total - meter.measureLen) > 1e-6) console.warn(`Mesure ${ms.index + 1} incomplète : ${total}/${meter.measureLen}`);
     }
   });
 
