@@ -19,19 +19,27 @@ const STAVE_SPAN = 40;
 /** Altérations accidentelles d'une portée sur une mesure (règles usuelles). */
 function computeAccidentals(events, key) {
   const state = new Map();
-  return events.map((ev) => ev.notes.map((n) => {
+  const resolve = (n) => {
     const k = `${letterOf(n.D)}-${octaveOf(n.D)}`;
     const current = state.has(k) ? state.get(k) : key.signature[letterOf(n.D)];
     if (n.alter === current) return null;
     state.set(k, n.alter);
     return ACCIDENTALS[n.alter];
-  }));
+  };
+  return events.map((ev) => {
+    const appAcc = ev.appoggiatura ? resolve(ev.appoggiatura) : null;
+    const noteAccs = ev.notes.map(resolve);
+    noteAccs.appAcc = appAcc;
+    return noteAccs;
+  });
 }
 
 function eventWidth(ev, accs) {
-  let w = 26 + Math.min(ev.dur, 8) * 1.8;
-  if (DURATIONS[ev.dur][1]) w += 8;
+  const nd = ev.notationDur ?? ev.dur;
+  let w = 26 + Math.min(nd, 8) * 1.8;
+  if (DURATIONS[nd][1]) w += 8;
   w += accs.filter(Boolean).length * 11;
+  if (ev.appoggiatura) w += 18 + (accs.appAcc ? 10 : 0);
   // Espace additionnel pour les notes à lignes supplémentaires multiples (> 2 lignes)
   const maxLedger = ev.notes.reduce((max, n) => {
     const aboveTreble = Math.max(0, n.D - 38);
@@ -295,11 +303,14 @@ export class ScoreRenderer {
         // Notes
         const voices = [];
         const beams = [];
+        const tuplets = [];
         const built = [];
         const formatter = new VF.Formatter();
         const buildStaff = (events, accs, clef, stave) => {
+          const tupletGroups = new Map();
           const notes = events.map((ev, i) => {
-            const [base, dots] = DURATIONS[ev.dur];
+            const nd = ev.notationDur ?? ev.dur;
+            const [base, dots] = DURATIONS[nd];
             const dur = base + 'd'.repeat(dots);
             let note;
             if (ev.rest) {
@@ -307,11 +318,32 @@ export class ScoreRenderer {
             } else {
               note = new VF.StaveNote({ clef, keys: ev.notes.map((n) => vexKey(n.D)), duration: dur, auto_stem: true });
               accs[i].forEach((a, k) => { if (a) note.addModifier(new VF.Accidental(a), k); });
+              if (ev.appoggiatura) {
+                const gn = new VF.GraceNote({
+                  clef,
+                  keys: [vexKey(ev.appoggiatura.D)],
+                  duration: '8',
+                  slash: false,
+                });
+                if (accs[i].appAcc) gn.addModifier(new VF.Accidental(accs[i].appAcc), 0);
+                note.addModifier(new VF.GraceNoteGroup([gn], false), 0);
+              }
             }
             if (dots) VF.Dot.buildAndAttach([note], { all: true });
+            if (ev.tuplet) {
+              let grp = tupletGroups.get(ev.tuplet.id);
+              if (!grp) {
+                grp = { meta: ev.tuplet, notes: [] };
+                tupletGroups.set(ev.tuplet.id, grp);
+              }
+              grp.notes.push(note);
+            }
             built.push({ note, ev });
             return note;
           });
+          for (const { meta, notes: tNotes } of tupletGroups.values()) {
+            tuplets.push(new VF.Tuplet(tNotes, { num_notes: meta.num, notes_occupied: meta.occupied }));
+          }
           const voice = new VF.Voice({ num_beats: meter.num, beat_value: meter.den })
             .setMode(VF.Voice.Mode.SOFT)
             .addTickables(notes);
@@ -327,6 +359,7 @@ export class ScoreRenderer {
         formatter.format(voices.map((v) => v.voice), Math.max(20, noteWidth));
         voices.forEach(({ voice, stave }) => voice.draw(ctx, stave));
         beams.forEach((b) => b.setContext(ctx).draw());
+        tuplets.forEach((t) => t.setContext(ctx).draw());
 
         for (const { note, ev } of built) {
           const el = note.getSVGElement?.() ?? null;

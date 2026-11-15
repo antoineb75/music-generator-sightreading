@@ -52,8 +52,8 @@ export function midiFileBytes(score, bpm) {
   const tracks = hands.map(({ hand, name, channel }) => {
     const evs = [meta(0, 0x03, ascii(name)), { tick: 0, order: 1, bytes: [0xc0 | channel, 0] }];
     for (const n of notes.filter((x) => x.hand === hand)) {
-      const on = n.u * TICKS_PER_UNIT;
-      const off = on + n.durU * TICKS_PER_UNIT - 10;
+      const on = Math.round(n.u * TICKS_PER_UNIT);
+      const off = Math.max(on + 10, Math.round((n.u + n.durU) * TICKS_PER_UNIT) - 10);
       evs.push({ tick: on, order: 3, bytes: [0x90 | channel, n.midi, n.vel] });
       evs.push({ tick: off, order: 2, bytes: [0x80 | channel, n.midi, 0] });
     }
