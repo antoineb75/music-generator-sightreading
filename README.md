@@ -73,83 +73,87 @@ Application web pédagogique pour professeurs et élèves de musique permettant 
 
 ---
 
-## 🚀 Utilisation en local
+## 🚀 Utilisation en local (API Python `music21` + Front-end)
 
-Aucune installation complexe ni outil de compilation nécessaire : l'application est en JavaScript moderne natif.
+La génération musicale est assurée par une API Python (**FastAPI + `music21`**) appelée par le client JavaScript (`POST /api/generate`). Le serveur FastAPI sert également le front-end (`docs/`) sur la même origine.
 
-### Option 1 : Avec Python
+### 1. Installer les dépendances Python et démarrer le serveur
 ```bash
-# Dans le dossier du projet :
-python3 -m http.server 8080 --directory docs
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn api.main:app --reload --host 0.0.0.0 --port 8080
 ```
 Puis ouvrez votre navigateur sur [http://localhost:8080](http://localhost:8080).
 
-### Option 2 : Avec Node / npm
+### 2. Exécuter les tests unitaires
 ```bash
-npm start
-```
+# Tests Python (API FastAPI + music21)
+.venv/bin/python -m unittest discover -s tests -p "test_*.py" -v
 
-### Exécuter les tests unitaires
-```bash
+# Tests JavaScript (théorie, MIDI, VexFlow)
 npm test
 ```
 
 ---
 
-## 🐳 Conteneur Docker & Déploiement Cloud Run
+## ☁️ Déploiement sur Render
 
-L'application inclut un `Dockerfile` basé sur `nginx:alpine` léger (~25 Mo) configuré pour injecter dynamiquement la variable d'environnement `$PORT`.
+Le dépôt inclut un blueprint [`render.yaml`](render.yaml) prêt pour **Render** :
 
-### 1. Test du conteneur en local
+1. Connectez ce dépôt GitHub dans le tableau de bord Render (**New + → Blueprint**).
+2. Render détecte automatiquement `render.yaml` :
+   - **Build Command** : `pip install -r requirements.txt`
+   - **Start Command** : `uvicorn api.main:app --host 0.0.0.0 --port $PORT`
+   - **Health Check** : `/api/health`
+3. L'URL Render sert directement **l'API (`/api/generate`) et le front-end (`/`)**.
+4. *(Optionnel)* Si vous hébergez le dossier `docs/` séparément (ex. GitHub Pages), renseignez l'URL Render dans `docs/js/config.js` (`DEFAULT_API_URL = 'https://partitio-api.onrender.com'`) ou passez `?api=https://partitio-api.onrender.com` dans l'URL.
+
+---
+
+## 🐳 Conteneur Docker
+
 ```bash
-# Construction de l'image
 docker build -t partitio .
-
-# Lancement sur le port 8080
 docker run -p 8080:8080 -e PORT=8080 partitio
 ```
-Accédez ensuite à l'application via `http://localhost:8080`.
-
-### 2. Déploiement sur Google Cloud Run
-
-#### Déploiement direct avec Google Cloud CLI :
-```bash
-gcloud run deploy partitio \
-  --source . \
-  --region europe-west1 \
-  --allow-unauthenticated
-```
-
-Cloud Run construira le conteneur et fournira automatiquement une URL HTTPS publique sécurisée (compatible avec la Web MIDI API qui requiert un contexte HTTPS).
 
 ---
 
 ## 📂 Structure du projet
 
 ```
-├── Dockerfile                   # Image nginx alpine prête pour Cloud Run
-├── nginx.conf.template          # Configuration nginx avec support de la variable $PORT
-├── .dockerignore
+├── api/
+│   ├── main.py                  # API FastAPI (/api/health, /api/generate) + fichiers statiques docs/
+│   ├── generator.py             # Moteur de composition musicale basé sur music21
+│   └── theory.py                # Tonalités, gammes et hauteurs via music21
+├── render.yaml                  # Blueprint de déploiement Render
+├── requirements.txt             # Dépendances Python (fastapi, uvicorn, music21, pydantic)
+├── Dockerfile                   # Image Python 3.12 (API music21 + front-end)
 ├── package.json                 # Scripts de test et de démarrage
 ├── README.md
 ├── tests/
-│   └── generator.test.js        # Tests unitaires (gammes, mesures complètes, MIDI, cadences)
+│   ├── test_api.py              # Tests unitaires Python (music21 + endpoints FastAPI)
+│   └── generator.test.js        # Tests unitaires JavaScript (gammes, MIDI, VexFlow)
 └── docs/
-    ├── index.html               # Interface utilisateur
+    ├── index.html               # Interface utilisateur (identique à l'existant)
     ├── css/
     │   └── styles.css           # Thème sombre, adaptatif et styles d'impression A4
     ├── vendor/
     │   └── vexflow.js           # Moteur de gravure musicale SVG VexFlow
     └── js/
-        ├── app.js               # Câblage de l'interface et du cycle de vie
+        ├── app.js               # Câblage de l'interface et appel asynchrone à l'API Python
+        ├── api-client.js        # Client HTTP fetch vers POST /api/generate
+        ├── config.js            # Configuration de l'URL Render de l'API
+        ├── ambitus-ribbon.js    # Mini-clavier interactif d'ambitus
         ├── theory.js            # Règles d'harmonie, armures, gammes (majeures, mineures)
-        ├── rng.js               # Générateur pseudo-aléatoire reproductible
-        ├── generator.js         # Moteur de composition musicale selon le niveau
-        ├── events.js            # Horodatage et vélocités des notes
+        ├── rng.js               # Générateur de graine
+        ├── generator.js         # Libellés et utilitaires de tempo
+        ├── events.js            # Horodatage et vélocités expressives des notes
         ├── piano-synth.js       # Synthèse physique du son de piano (Web Audio API)
         ├── midi.js              # Pilote Web MIDI API pour instruments externes
         ├── midi-file.js         # Encodeur de fichier binaire Standard MIDI (.mid)
         ├── player.js            # Séquenceur de lecture avec anticipation et synchronisation visuelle
-        ├── renderer.js          # Rendu SVG et système de surlignage des notes
+        ├── renderer.js          # Rendu SVG VexFlow et surlignage des notes
         └── settings.js          # Persistance des réglages utilisateur dans localStorage
 ```

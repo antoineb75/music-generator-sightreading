@@ -3,7 +3,8 @@
 // ─────────────────────────────────────────────────────────────
 
 import { KEYS, getKey, MINOR_TYPE_LABELS, PIANO_NOTES, noteToD, frNoteLabel, analyzeScoreAmbitus, getActivePlaybackInfo } from './theory.js';
-import { generateScore, LEVEL_LABELS, HAND_LABELS, ENRICHED_LABELS, tempoItalianName } from './generator.js';
+import { LEVEL_LABELS, HAND_LABELS, ENRICHED_LABELS, tempoItalianName } from './generator.js';
+import { generateScoreFromApi } from './api-client.js';
 import { newSeed } from './rng.js';
 import { ScoreRenderer } from './renderer.js';
 import { updateAmbitusDisplay } from './ambitus-ribbon.js';
@@ -362,8 +363,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     player.setOutput(selectOutput.value);
   }
 
-  // ── Génération et Rendu ────────────────────────────────────
-  function doGenerate(forceNewSeed = true) {
+  // ── Génération et Rendu (via API Python music21) ───────────
+  let activeGenerateController = null;
+  const originalGenerateHtml = btnGenerate.innerHTML;
+
+  async function doGenerate(forceNewSeed = true) {
     readSettingsFromUI();
     let seed = forceNewSeed ? newSeed() : loadLastSeed();
     if (!seed) seed = newSeed();
@@ -371,7 +375,33 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     player.stop();
 
-    const score = generateScore(settings, seed);
+    if (activeGenerateController) activeGenerateController.abort();
+    const controller = new AbortController();
+    activeGenerateController = controller;
+
+    btnGenerate.disabled = true;
+    btnGenerate.textContent = '⏳ Génération…';
+
+    let score;
+    try {
+      score = await generateScoreFromApi(settings, seed, { signal: controller.signal });
+    } catch (err) {
+      if (err?.name === 'AbortError') return;
+      console.error('Échec de l’appel à l’API de génération:', err);
+      scoreTitle.textContent = 'API de génération indisponible';
+      scoreDetails.innerHTML = `<span>Impossible de joindre le serveur Python (music21) : <strong>${err.message}</strong></span>`;
+      scoreContainer.innerHTML = '<p style="padding: 1.5rem; text-align: center; opacity: 0.85;">Le service API Python (music21) ne répond pas. Vérifiez que le serveur est démarré ou configuré.</p>';
+      return;
+    } finally {
+      if (activeGenerateController === controller) {
+        activeGenerateController = null;
+        btnGenerate.disabled = false;
+        btnGenerate.innerHTML = originalGenerateHtml;
+      }
+    }
+
+    if (controller.signal.aborted) return;
+
     currentScore = score;
     player.load(score);
 

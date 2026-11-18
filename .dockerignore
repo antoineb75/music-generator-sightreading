@@ -1,7 +1,12 @@
 .git
-.github
-node_modules
-tests
+.gitignore
 .DS_Store
-*.md
-package*.json
+.kilo
+.venv
+__pycache__
+*.pyc
+.pytest_cache
+tests
+README.md
+ALGORITHME.md
+CONFIG_MIDI_ANALOG_LAB.md
