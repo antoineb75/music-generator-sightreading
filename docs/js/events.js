@@ -33,27 +33,13 @@ export function buildNoteEvents(score) {
         if (isMelody && ev.dur >= 4) vel += 4; // notes tenues plus chantantes
         if (isFinalCadence) vel -= 4; // résolution finale posée
 
-        const app = ev.appoggiatura;
-        const appDur = app ? Math.min(0.6, ev.dur * 0.25) : 0;
-        if (app) {
-          out.push({
-            u: offset + ev.start,
-            durU: appDur,
-            midi: app.midi,
-            vel: Math.max(30, Math.min(127, vel + 2)),
-            hand: ev.hand,
-            id: ev.id,
-            channel: ev.hand === 'left' ? 1 : 0,
-          });
-        }
-
         const maxDNote = ev.notes.length ? Math.max(...ev.notes.map((n) => n.D)) : 0;
         for (const n of ev.notes) {
           // En accords, faire ressortir légèrement la voix supérieure (soprano)
           const voiceBalance = ev.notes.length > 1 && n.D === maxDNote ? 4 : ev.notes.length > 1 ? -4 : 0;
           out.push({
-            u: offset + ev.start + appDur,
-            durU: ev.dur - appDur,
+            u: offset + ev.start,
+            durU: ev.dur,
             midi: n.midi,
             vel: Math.max(30, Math.min(127, vel + voiceBalance)),
             hand: ev.hand,

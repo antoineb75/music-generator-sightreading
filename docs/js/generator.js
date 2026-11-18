@@ -652,12 +652,34 @@ function genMelody(rng, ctx, rhythms, clef, hand) {
   const nearest = (cands, target) =>
     cands.reduce((best, D) => (Math.abs(D - target) < Math.abs(best - target) ? D : best), cands[0]);
 
-  // Point culminant expressif (climax) atteignant maxD
+  const pickConsonantIdx = (idealIdx, targetD) => {
+    if (N < 4) return N > 1 ? 0 : 0;
+    const tDeg = degreeOf(targetD, key);
+    let bestIdx = Math.max(1, Math.min(N - 2, idealIdx));
+    let bestScore = -Infinity;
+    for (let j = 1; j <= N - 2; j++) {
+      const { m: jm, ev: jev } = pitched[j];
+      const ch = chordAt(slots, jm, jev.start);
+      const degs = chordDegrees(ch);
+      const inTriad = degs.slice(0, 3).includes(tDeg);
+      const inChord = degs.includes(tDeg);
+      const score = (inTriad ? 100 : inChord ? 40 : (jev.start > 0 ? 10 : -50)) - Math.abs(j - idealIdx);
+      if (score > bestScore) {
+        bestScore = score;
+        bestIdx = j;
+      }
+    }
+    return bestIdx;
+  };
+
+  // Point culminant expressif (climax) atteignant maxD en harmonie avec l'accord
   const targetClimaxIdx = (hand === 'right' || hands === 'left')
-    ? (N >= 4 ? Math.max(1, Math.min(N - 2, Math.floor(N * 0.65))) : (N > 1 ? 0 : 0))
+    ? pickConsonantIdx(Math.floor(N * 0.65), maxD)
     : -1;
   // Creux mélodique atteignant minD si la main droite joue seule
-  const targetMinIdx = (hands === 'right' && N >= 4) ? Math.max(1, Math.floor(N * 0.25)) : -1;
+  const targetMinIdx = (hands === 'right' && N >= 4)
+    ? pickConsonantIdx(Math.floor(N * 0.25), minD)
+    : -1;
 
   let prev = null;
   let prev2 = null;
@@ -683,8 +705,10 @@ function genMelody(rng, ctx, rhythms, clef, hand) {
       // Creux mélodique : atteint minD
       D = minD;
     } else if (i === 0) {
-      // Début sur un degré stable (tonique ou quinte)
-      const cands = range.filter(isCT);
+      // Début sur un degré stable de la triade (tonique, tierce ou quinte)
+      const triadDegs = cdegs.slice(0, 3);
+      const triadCands = range.filter((x) => triadDegs.includes(degreeOf(x, key)));
+      const cands = triadCands.length ? triadCands : range.filter(isCT);
       D = cands.length
         ? rng.weighted(cands.map((x) => [x, (degreeOf(x, key) === 0 ? 3 : 1) / (1 + Math.abs(x - referenceTonicD))]))
         : referenceTonicD;
@@ -699,9 +723,13 @@ function genMelody(rng, ctx, rhythms, clef, hand) {
       const weighted = cands.map((x) => [x, IW[Math.abs(x - prev)] ?? 1]);
       D = weighted.some(([, w]) => w > 0) ? rng.weighted(weighted) : nearest(cands.length ? cands : range, prev);
     } else {
+      const isBarStart = ev.start === 0;
       const strong = ev.start % meter.beatLen === 0;
       const progress = i / N;
       const prevDeg = degreeOf(prev, key);
+      const triadDegs = cdegs.slice(0, 3);
+      const hasTriadInRange = range.some((x) => triadDegs.includes(degreeOf(x, key)));
+      const hasCTInRange = range.some(isCT);
       const isHalfCadenceEnd = m === halfMeasure && pitched[i + 1]?.m > halfMeasure;
       const motifIdx = (n >= 6 && m === Math.floor(n / 2)) ? i - pitched.findIndex((p) => p.m === Math.floor(n / 2)) : -1;
       const expectedMotifInt = motifIdx > 0 && motifIdx <= themeIntervals.length ? themeIntervals[motifIdx - 1] : null;
@@ -714,7 +742,15 @@ function genMelody(rng, ctx, rhythms, clef, hand) {
         if (iv === 0 && prev === prev2) continue; // Pas 3 fois la même note
         const ct = isCT(x);
         const xDeg = degreeOf(x, key);
-        w *= strong ? (ct ? 1.3 : 0.1) : ct ? 1 : 0.85;
+        const inTriad = triadDegs.includes(xDeg);
+
+        // En début de mesure (temps 1) : imposer une note de l'accord (triade consonante si disponible)
+        if (isBarStart) {
+          if (hasCTInRange && !ct) continue;
+          if (hasTriadInRange && !inTriad) continue;
+        } else {
+          w *= strong ? (ct ? 1.3 : 0.1) : ct ? 1 : 0.85;
+        }
         if ((x - prev) * dir > 0) w *= 1.8;
 
         // Éviter les sauts de triton (degré 3 <-> degré 6) et les sauts de 7e durs
@@ -804,22 +840,6 @@ function genMelody(rng, ctx, rhythms, clef, hand) {
         const alter = alterOf[idx];
         out.notes.push({ D: ev.D, alter, midi: toMidi(ev.D, alter) });
 
-        // Appoggiature expressive (dès le niveau intermédiaire, sur notes longues / temps forts)
-        const appProb = level === 'expert' ? 0.28 : level === 'avance' ? 0.22 : level === 'intermediaire' ? 0.14 : 0;
-        const canApp = appProb > 0 && idx > 0 && m < n - 1 && ev.dur >= 4 && !ev.tuplet
-          && (ev.start % meter.beatLen === 0 || ev.dur >= 6);
-        if (canApp && rng.chance(appProb)) {
-          const preferUpper = rng.chance(0.65);
-          let appD = preferUpper ? ev.D + 1 : ev.D - 1;
-          if (appD > maxD) appD = ev.D - 1;
-          if (appD < minD) appD = ev.D + 1;
-          if (appD >= minD && appD <= maxD && appD !== ev.D) {
-            const appDeg = degreeOf(appD, key);
-            const appAlter = appD < ev.D ? scale.melodyUp[appDeg] : scale.harmony[appDeg];
-            out.appoggiatura = { D: appD, alter: appAlter, midi: toMidi(appD, appAlter) };
-          }
-        }
-
         if (isEnrichedRight) {
           const isLastNote = (m === n - 1 && i === rhythm.length - 1);
           const isStrongBeat = (ev.dur >= 4 || ev.start === 0 || ev.start % meter.beatLen === 0);
@@ -881,9 +901,8 @@ function genAccompaniment(rng, ctx) {
     return Math.max(minD, Math.min(maxD, res));
   };
 
-  // Identification du slot harmonique idéal pour poser minD
-  let minSlotIdx = slots.findIndex((s) => letterOfDeg(s.degree) === minLetter);
-  if (minSlotIdx === -1) minSlotIdx = 0;
+  // Identification du slot harmonique idéal pour poser minD (sans forcer un faux accord en mesure 0)
+  const minSlotIdx = slots.findIndex((s) => letterOfDeg(s.degree) === minLetter);
 
   const perMeasure = Array.from({ length: n }, () => []);
   let prevBaseD = null;
@@ -1281,23 +1300,49 @@ export function generateScore(settings, seed) {
           }
         }
         ev.notes.sort((a, b) => a.D - b.D);
-        if (ev.appoggiatura && (ev.appoggiatura.D < params.minD || ev.appoggiatura.D > params.maxD)) {
-          delete ev.appoggiatura;
-        }
       }
     }
   });
 
   // 2. Garantie absolue de présence de minD en main gauche et maxD en main droite
+  //    (en choisissant en priorité un événement dont l'accord contient cette note pour éviter toute dissonance)
+  const pickExtremumEvent = (allEntries, targetD, isMax) => {
+    const tDeg = degreeOf(targetD, key);
+    const scoreEntry = ({ m, ev }) => {
+      const ch = chordAt(slots, m, ev.start);
+      const degs = chordDegrees(ch);
+      const inTriad = degs.slice(0, 3).includes(tDeg);
+      const inChord = degs.includes(tDeg);
+      const isRoot = ch.degree === tDeg;
+      const onBarStart = ev.start === 0;
+      const singleNoteBonus = ev.notes.length === 1 ? 15 : 0;
+      let s = 0;
+      if (!isMax && onBarStart) {
+        // En basse sur le 1er temps : n'accepter que la fondamentale (sinon privilégier un temps faible)
+        s = isRoot ? 100 : (inTriad ? -20 : -100);
+      } else {
+        s = inTriad ? 100 : inChord ? 50 : (onBarStart ? -50 : 10);
+      }
+      return s + singleNoteBonus;
+    };
+    const bestScore = Math.max(...allEntries.map(scoreEntry));
+    const pool = allEntries.filter((e) => scoreEntry(e) === bestScore);
+    return pool.reduce((best, item) => {
+      const val = isMax ? item.ev.notes.at(-1).D : item.ev.notes[0].D;
+      const bestVal = isMax ? best.ev.notes.at(-1).D : best.ev.notes[0].D;
+      return (isMax ? val > bestVal : val < bestVal) ? item : best;
+    }, pool[0]).ev;
+  };
+
   if (treble) {
     const hasMax = measures.some((m) => m.treble && m.treble.some((e) => !e.rest && e.notes.some((n) => n.D === params.maxD)));
     if (!hasMax) {
       const allPitched = [];
       measures.forEach((m) => {
-        if (m.treble) m.treble.forEach((e) => { if (!e.rest && e.notes.length) allPitched.push(e); });
+        if (m.treble) m.treble.forEach((ev) => { if (!ev.rest && ev.notes.length) allPitched.push({ m: m.index, ev }); });
       });
       if (allPitched.length) {
-        const targetEv = allPitched.reduce((best, e) => (e.notes.at(-1).D > best.notes.at(-1).D ? e : best), allPitched[0]);
+        const targetEv = pickExtremumEvent(allPitched, params.maxD, true);
         const alter = scale.harmony[degreeOf(params.maxD, key)] ?? 0;
         targetEv.notes[targetEv.notes.length - 1] = { D: params.maxD, alter, midi: toMidi(params.maxD, alter) };
         targetEv.notes.sort((a, b) => a.D - b.D);
@@ -1308,10 +1353,10 @@ export function generateScore(settings, seed) {
       if (!hasMin) {
         const allPitched = [];
         measures.forEach((m) => {
-          if (m.treble) m.treble.forEach((e) => { if (!e.rest && e.notes.length) allPitched.push(e); });
+          if (m.treble) m.treble.forEach((ev) => { if (!ev.rest && ev.notes.length) allPitched.push({ m: m.index, ev }); });
         });
         if (allPitched.length) {
-          const targetEv = allPitched.reduce((best, e) => (e.notes[0].D < best.notes[0].D ? e : best), allPitched[0]);
+          const targetEv = pickExtremumEvent(allPitched, params.minD, false);
           const alter = scale.harmony[degreeOf(params.minD, key)] ?? 0;
           targetEv.notes[0] = { D: params.minD, alter, midi: toMidi(params.minD, alter) };
           targetEv.notes.sort((a, b) => a.D - b.D);
@@ -1325,12 +1370,13 @@ export function generateScore(settings, seed) {
     if (!hasMin) {
       const allPitched = [];
       measures.forEach((m) => {
-        if (m.bass) m.bass.forEach((e) => { if (!e.rest && e.notes.length) allPitched.push(e); });
+        if (m.bass) m.bass.forEach((ev) => { if (!ev.rest && ev.notes.length) allPitched.push({ m: m.index, ev }); });
       });
       if (allPitched.length) {
-        const targetEv = allPitched.reduce((best, e) => (e.notes[0].D < best.notes[0].D ? e : best), allPitched[0]);
+        const targetEv = pickExtremumEvent(allPitched, params.minD, false);
         const alter = scale.harmony[degreeOf(params.minD, key)] ?? 0;
         targetEv.notes[0] = { D: params.minD, alter, midi: toMidi(params.minD, alter) };
+        targetEv.notes = targetEv.notes.filter((n) => n.D - params.minD <= 8);
         targetEv.notes.sort((a, b) => a.D - b.D);
       }
     }
@@ -1339,10 +1385,10 @@ export function generateScore(settings, seed) {
       if (!hasMax) {
         const allPitched = [];
         measures.forEach((m) => {
-          if (m.bass) m.bass.forEach((e) => { if (!e.rest && e.notes.length) allPitched.push(e); });
+          if (m.bass) m.bass.forEach((ev) => { if (!ev.rest && ev.notes.length) allPitched.push({ m: m.index, ev }); });
         });
         if (allPitched.length) {
-          const targetEv = allPitched.reduce((best, e) => (e.notes.at(-1).D > best.notes.at(-1).D ? e : best), allPitched[0]);
+          const targetEv = pickExtremumEvent(allPitched, params.maxD, true);
           const alter = scale.harmony[degreeOf(params.maxD, key)] ?? 0;
           targetEv.notes[targetEv.notes.length - 1] = { D: params.maxD, alter, midi: toMidi(params.maxD, alter) };
           targetEv.notes.sort((a, b) => a.D - b.D);

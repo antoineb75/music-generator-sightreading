@@ -19,19 +19,13 @@ const STAVE_SPAN = 40;
 /** Altérations accidentelles d'une portée sur une mesure (règles usuelles). */
 function computeAccidentals(events, key) {
   const state = new Map();
-  const resolve = (n) => {
+  return events.map((ev) => ev.notes.map((n) => {
     const k = `${letterOf(n.D)}-${octaveOf(n.D)}`;
     const current = state.has(k) ? state.get(k) : key.signature[letterOf(n.D)];
     if (n.alter === current) return null;
     state.set(k, n.alter);
     return ACCIDENTALS[n.alter];
-  };
-  return events.map((ev) => {
-    const appAcc = ev.appoggiatura ? resolve(ev.appoggiatura) : null;
-    const noteAccs = ev.notes.map(resolve);
-    noteAccs.appAcc = appAcc;
-    return noteAccs;
-  });
+  }));
 }
 
 function eventWidth(ev, accs) {
@@ -39,7 +33,6 @@ function eventWidth(ev, accs) {
   let w = 26 + Math.min(nd, 8) * 1.8;
   if (DURATIONS[nd][1]) w += 8;
   w += accs.filter(Boolean).length * 11;
-  if (ev.appoggiatura) w += 18 + (accs.appAcc ? 10 : 0);
   // Espace additionnel pour les notes à lignes supplémentaires multiples (> 2 lignes)
   const maxLedger = ev.notes.reduce((max, n) => {
     const aboveTreble = Math.max(0, n.D - 38);
@@ -318,16 +311,6 @@ export class ScoreRenderer {
             } else {
               note = new VF.StaveNote({ clef, keys: ev.notes.map((n) => vexKey(n.D)), duration: dur, auto_stem: true });
               accs[i].forEach((a, k) => { if (a) note.addModifier(new VF.Accidental(a), k); });
-              if (ev.appoggiatura) {
-                const gn = new VF.GraceNote({
-                  clef,
-                  keys: [vexKey(ev.appoggiatura.D)],
-                  duration: '8',
-                  slash: false,
-                });
-                if (accs[i].appAcc) gn.addModifier(new VF.Accidental(accs[i].appAcc), 0);
-                note.addModifier(new VF.GraceNoteGroup([gn], false), 0);
-              }
             }
             if (dots) VF.Dot.buildAndAttach([note], { all: true });
             if (ev.tuplet) {
