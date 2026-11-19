@@ -1,6 +1,6 @@
 // Écriture d'un fichier MIDI standard (SMF format 1).
 
-import { buildNoteEvents } from './events.js';
+import { buildNoteEvents, buildPedalEvents } from './events.js';
 
 const TICKS_PER_QUARTER = 480;
 const TICKS_PER_UNIT = TICKS_PER_QUARTER / 4; // unité = double-croche
@@ -45,6 +45,7 @@ export function midiFileBytes(score, bpm) {
   ];
 
   const notes = buildNoteEvents(score);
+  const pedals = buildPedalEvents(score);
   const hands = [
     { hand: 'right', name: 'Main droite', channel: 0 },
     { hand: 'left', name: 'Main gauche', channel: 1 },
@@ -53,9 +54,16 @@ export function midiFileBytes(score, bpm) {
     const evs = [meta(0, 0x03, ascii(name)), { tick: 0, order: 1, bytes: [0xc0 | channel, 0] }];
     for (const n of notes.filter((x) => x.hand === hand)) {
       const on = Math.round(n.u * TICKS_PER_UNIT);
-      const off = Math.max(on + 10, Math.round((n.u + n.durU) * TICKS_PER_UNIT) - 10);
+      const gateRatio = n.gateRatio ?? 0.95;
+      const off = Math.max(on + 10, Math.round((n.u + n.durU * gateRatio) * TICKS_PER_UNIT));
       evs.push({ tick: on, order: 3, bytes: [0x90 | channel, n.midi, n.vel] });
       evs.push({ tick: off, order: 2, bytes: [0x80 | channel, n.midi, 0] });
+    }
+    if (hand === 'left') {
+      for (const p of pedals) {
+        const tick = Math.max(0, Math.round(p.u * TICKS_PER_UNIT));
+        evs.push({ tick, order: p.value === 0 ? 1 : 4, bytes: [0xb0 | channel, 64, p.value] });
+      }
     }
     return encodeTrack(evs);
   });

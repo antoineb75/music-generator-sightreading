@@ -53,6 +53,10 @@ export class MidiOut {
     this.send([0x80 | channel, note, 0], tSec);
   }
 
+  sustain(channel, value, tSec) {
+    this.send([0xb0 | channel, 64, value ? 127 : 0], tSec);
+  }
+
   allNotesOff() {
     if (!this.output) return;
     const now = performance.now() / 1000;

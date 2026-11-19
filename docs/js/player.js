@@ -7,7 +7,7 @@
 // performance.now pour le MIDI). Le surlignage visuel est synchronisé
 // sur la même horloge via requestAnimationFrame.
 
-import { buildNoteEvents, buildBeatEvents } from './events.js';
+import { buildNoteEvents, buildBeatEvents, buildPedalEvents } from './events.js';
 
 const LOOKAHEAD = 0.2;
 const TICK_MS = 25;
@@ -27,6 +27,7 @@ export class Player {
     this.score = null;
     this.notes = [];
     this.beats = [];
+    this.pedals = [];
     this.posU = 0;
     this.visual = [];
     this.lit = new Map();
@@ -37,6 +38,7 @@ export class Player {
     this.score = score;
     this.notes = buildNoteEvents(score);
     this.beats = buildBeatEvents(score);
+    this.pedals = buildPedalEvents(score);
     this.posU = 0;
   }
 
@@ -106,6 +108,8 @@ export class Player {
     if (this.noteIdx < 0) this.noteIdx = this.notes.length;
     this.beatIdx = this.beats.findIndex((b) => b.u >= this.posU);
     if (this.beatIdx < 0) this.beatIdx = this.beats.length;
+    this.pedalIdx = this.pedals.findIndex((p) => p.u >= this.posU);
+    if (this.pedalIdx < 0) this.pedalIdx = this.pedals.length;
 
     if (this.output === 'midi') {
       const t = this.clock();
@@ -160,18 +164,34 @@ export class Player {
   #tick() {
     const horizon = this.clock() + LOOKAHEAD;
     const spu = this.spu;
+    const ritStartU = Math.max(0, (this.score.totalUnits || 0) - this.score.meter.measureLen);
+    const hasPedal = this.pedals.length > 0;
     while (this.noteIdx < this.notes.length && this.timeOf(this.notes[this.noteIdx].u) < horizon) {
       const n = this.notes[this.noteIdx++];
-      const t = this.timeOf(n.u);
-      const d = n.durU * spu;
-      const gate = d * 0.95;
+      // Léger ritardando sur la dernière mesure + micro-humanisation subtile
+      const ritOffset = n.u >= ritStartU ? ((n.u - ritStartU) / Math.max(1, this.score.meter.measureLen)) * spu * 0.6 : 0;
+      const t = Math.max(this.clock(), this.timeOf(n.u) + (n.humanizeSec ?? 0) + ritOffset);
+      const d = n.durU * spu * (n.u >= ritStartU ? 1.12 : 1.0);
+      const baseGate = d * (n.gateRatio ?? 0.95);
+      // Légère résonance additionnelle sur le synthé interne quand la pédale est active
+      const synthGate = hasPedal ? Math.min(d * 1.25, baseGate + 0.14) : baseGate;
       if (this.output === 'synth') {
-        this.synth.playNote(n.midi, t, gate, n.vel);
+        this.synth.playNote(n.midi, t, synthGate, n.vel);
       } else {
         this.midi.noteOn(n.channel, n.midi, n.vel, t);
-        this.midi.noteOff(n.channel, n.midi, t + gate);
+        this.midi.noteOff(n.channel, n.midi, t + baseGate);
       }
       this.visual.push({ id: n.id, on: t, off: t + d - 0.015, started: false });
+    }
+    if (this.output === 'midi') {
+      while (this.pedalIdx < this.pedals.length && this.timeOf(this.pedals[this.pedalIdx].u) < horizon) {
+        const p = this.pedals[this.pedalIdx++];
+        const t = this.timeOf(p.u);
+        this.midi.sustain(0, p.value, t);
+        this.midi.sustain(1, p.value, t);
+      }
+    } else {
+      while (this.pedalIdx < this.pedals.length && this.timeOf(this.pedals[this.pedalIdx].u) < horizon) this.pedalIdx++;
     }
     if (this.metronome) {
       while (this.beatIdx < this.beats.length && this.timeOf(this.beats[this.beatIdx].u) < horizon) {

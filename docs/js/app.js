@@ -19,7 +19,7 @@ import {
   saveLastSeed,
 } from './settings.js';
 
-document.addEventListener('DOMContentLoaded', async () => {
+async function initApp() {
   // ── Éléments DOM ──────────────────────────────────────────
   const selectKey = document.getElementById('select-key');
   const selectMinorType = document.getElementById('select-minor-type');
@@ -29,6 +29,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const badgeMeasures = document.getElementById('badge-measures');
   const selectLevel = document.getElementById('select-level');
   const selectHands = document.getElementById('select-hands');
+  const selectStyle = document.getElementById('select-style');
   const selectEnriched = document.getElementById('select-enriched');
   const selectMinNote = document.getElementById('select-min-note');
   const selectMaxNote = document.getElementById('select-max-note');
@@ -39,6 +40,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const rndMeasures = document.getElementById('rnd-measures');
   const rndLevel = document.getElementById('rnd-level');
   const rndHands = document.getElementById('rnd-hands');
+  const rndStyle = document.getElementById('rnd-style');
   const rndEnriched = document.getElementById('rnd-enriched');
   const rndMinNote = document.getElementById('rnd-min-note');
   const rndMaxNote = document.getElementById('rnd-max-note');
@@ -220,6 +222,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     badgeMeasures.textContent = settings.measures || 8;
     selectLevel.value = settings.level || 'debutant';
     selectHands.value = settings.hands || 'both';
+    if (selectStyle) selectStyle.value = settings.style || 'auto';
     selectEnriched.value = settings.enrichedChords || 'auto';
     selectMinNote.value = settings.minNote || 'C2';
     selectMaxNote.value = settings.maxNote || 'C6';
@@ -238,6 +241,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     rndMeasures.checked = !!settings.random.measures;
     rndLevel.checked = !!settings.random.level;
     rndHands.checked = !!settings.random.hands;
+    if (rndStyle) rndStyle.checked = !!settings.random.style;
     rndEnriched.checked = !!settings.random.enrichedChords;
     rndMinNote.checked = !!settings.random.minNote;
     rndMaxNote.checked = !!settings.random.maxNote;
@@ -279,6 +283,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     settings.measures = parseInt(inputMeasures.value, 10);
     settings.level = selectLevel.value;
     settings.hands = selectHands.value;
+    if (selectStyle) settings.style = selectStyle.value;
     settings.enrichedChords = selectEnriched.value;
     settings.minNote = selectMinNote.value;
     settings.maxNote = selectMaxNote.value;
@@ -294,6 +299,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       measures: rndMeasures.checked,
       level: rndLevel.checked,
       hands: rndHands.checked,
+      style: !!rndStyle?.checked,
       enrichedChords: rndEnriched.checked,
       minNote: rndMinNote.checked,
       maxNote: rndMaxNote.checked,
@@ -314,6 +320,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     inputMeasures.disabled = rndMeasures.checked;
     selectLevel.disabled = rndLevel.checked;
     selectHands.disabled = rndHands.checked;
+    if (selectStyle && rndStyle) selectStyle.disabled = rndStyle.checked;
     selectEnriched.disabled = rndEnriched.checked;
     selectMinNote.disabled = rndMinNote.checked;
     selectMaxNote.disabled = rndMaxNote.checked;
@@ -426,6 +433,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     const ambitus = analyzeScoreAmbitus(score);
     updateAmbitusDisplay(ambitusCard, ambitus, p);
 
+    const STYLE_LABELS = {
+      classique: 'Classique',
+      baroque: 'Baroque',
+      romantique: 'Romantique',
+      pop: 'Pop / Jazz',
+    };
+    const styleLabel = STYLE_LABELS[p.style] || p.style || 'Classique';
+
     scoreDetails.innerHTML = `
       <span>Tonalité : <strong>${score.key.name}</strong></span>
       <span>•</span>
@@ -436,6 +451,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       <span><strong>${p.measures}</strong> mesures</span>
       <span>•</span>
       <span>Niveau : <strong>${LEVEL_LABELS[p.level]}</strong></span>
+      <span>•</span>
+      <span>Style : <strong>${styleLabel}</strong></span>
       <span>•</span>
       <span>Mains : <strong>${HAND_LABELS[p.hands]}</strong></span>
       <span>•</span>
@@ -455,7 +472,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 
   // ── Événements UI ──────────────────────────────────────────
-  [selectKey, selectMinorType, selectTimeSig, selectLevel, selectHands, selectEnriched].forEach((el) => {
+  [selectKey, selectMinorType, selectTimeSig, selectLevel, selectHands, selectStyle, selectEnriched].filter(Boolean).forEach((el) => {
     el.addEventListener('change', () => {
       readSettingsFromUI();
       updateMinorVisibility();
@@ -494,7 +511,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     setLiveHints(checkParamLiveHints.checked);
   });
 
-  [rndKey, rndMinorType, rndTimeSig, rndMeasures, rndLevel, rndHands, rndEnriched, rndMinNote, rndMaxNote].forEach((cb) => {
+  [rndKey, rndMinorType, rndTimeSig, rndMeasures, rndLevel, rndHands, rndStyle, rndEnriched, rndMinNote, rndMaxNote].filter(Boolean).forEach((cb) => {
     cb.addEventListener('change', () => {
       readSettingsFromUI();
       updateRandomDisableStates();
@@ -573,4 +590,10 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // Génère la partition initiale (en restaurant la dernière ou en créant une nouvelle)
   doGenerate(false);
-});
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
+}

@@ -151,6 +151,20 @@ class TestMusic21GeneratorAndApi(unittest.TestCase):
         res = self.client.get("/")
         self.assertEqual(res.status_code, 200)
         self.assertIn("Partitio", res.text)
+        self.assertIn("select-style", res.text)
+
+    def test_styles_inversions_and_quality_score(self) -> None:
+        has_inversion = False
+        for style in ("classique", "baroque", "romantique", "pop"):
+            score = generate_score(
+                {"timeSignature": "4/4", "measures": 8, "level": "avance", "key": "C", "hands": "both", "style": style},
+                seed=123,
+            )
+            self.assertEqual(score["params"]["style"], style)
+            self.assertIsInstance(score["qualityScore"], float)
+            if any("bassDegree" in s for s in score["slots"]):
+                has_inversion = True
+        self.assertTrue(has_inversion, "Doit générer des renversements de basse conjoints")
 
 
 if __name__ == "__main__":
