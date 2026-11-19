@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Partitio - Générateur & Lecteur de Partitions de Piano</title>
   <meta name="description" content="Application pédagogique pour professeurs et élèves de piano : générez, jouez, visualisez et imprimez des partitions sur mesure.">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎹</text></svg>">
   <link rel="stylesheet" href="css/styles.css">
   <script src="vendor/vexflow.js"></script>
 </head>
@@ -133,7 +134,24 @@
           </select>
         </div>
 
-        <!-- 7. Accords enrichis -->
+        <!-- 7. Style musical -->
+        <div class="param-group">
+          <div class="param-label-row">
+            <label for="select-style">Style musical</label>
+            <label class="random-checkbox-label" title="Sélectionner aléatoirement le style musical">
+              <input type="checkbox" id="rnd-style"> 🎲 Aléa
+            </label>
+          </div>
+          <select id="select-style" class="select-input">
+            <option value="auto">Automatique (selon le niveau)</option>
+            <option value="classique">Classique (Mozart)</option>
+            <option value="baroque">Baroque (Bach)</option>
+            <option value="romantique">Romantique (Chopin)</option>
+            <option value="pop">Pop / Jazz</option>
+          </select>
+        </div>
+
+        <!-- 8. Accords enrichis -->
         <div class="param-group">
           <div class="param-label-row">
             <label for="select-enriched">Accords enrichis (7e, 9e...)</label>

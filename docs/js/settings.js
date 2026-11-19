@@ -12,6 +12,7 @@ export const DEFAULT_SETTINGS = {
   minorType: 'harmonic',
   level: 'debutant',
   hands: 'both',
+  style: 'auto', // 'auto' | 'classique' | 'baroque' | 'romantique' | 'pop'
   enrichedChords: 'auto', // 'auto' | 'both' | 'right' | 'left' | 'none'
   minNote: 'C2',
   maxNote: 'C6',
@@ -27,6 +28,7 @@ export const DEFAULT_SETTINGS = {
     minorType: false,
     level: false,
     hands: false,
+    style: false,
     enrichedChords: false,
     minNote: false,
     maxNote: false,
