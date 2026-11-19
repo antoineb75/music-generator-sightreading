@@ -1,36 +1,40 @@
 # 🎹 Algorithme de Génération Musicale de Partitio
 
-Ce document détaille le fonctionnement complet de l'algorithme de composition musicale pianistique implémenté dans Partitio (`docs/js/generator.js`, `docs/js/theory.js`, `docs/js/rng.js`).
+Ce document détaille l'architecture et l'algorithme de composition musicale pianistique de **Partitio**, désormais propulsé par une **API Python basée sur `music21` et FastAPI** (`api/`) exposée sur **Render**, et consommée par le client navigateur JavaScript (`docs/js/`).
 
 ---
 
-## 🧭 Vue d'ensemble du pipeline de génération
+## 🧭 Vue d'ensemble de l'architecture et du pipeline
 
-L'algorithme adopte une approche **stochastique à base de règles harmoniques, contrapuntiques et anatomiques pianistiques**. Il produit une partition déterministe (reproductible à l'identique à partir d'une graine / `seed`) adaptée au niveau pédagogique de l'élève.
+La génération suit une architecture **Client / Serveur** :
+- Le navigateur (`docs/js/app.js` + `docs/js/api-client.js`) envoie les réglages pédagogiques et la graine (`seed`) via `POST /api/generate`.
+- L'API Python (`api/main.py`, `api/theory.py`, `api/generator.py`) compose la pièce de façon **déterministe** (reproductible à l'identique à partir de la même graine), assemble un objet `music21.stream.Score`, et renvoie la partition JSON consommée par VexFlow, le synthétiseur Web Audio, la sortie Web MIDI et l'export `.mid`.
 
 ```mermaid
 flowchart TD
-    A["Graine (Seed) & Paramètres UI / Aléatoires"] --> B["1. Résolution des paramètres (resolveParams)"]
-    B --> C["2. Modèle théorique & Gammes (theory.js)"]
-    C --> D["3. Planification harmonique globale (planHarmony)"]
-    D --> E["4. Génération de la trame rythmique (genMeasureRhythm)"]
-    E --> F["5. Composition de la mélodie (genMelody)"]
-    D --> G["6. Composition de l'accompagnement (genAccompaniment)"]
-    F --> H["7. Post-traitement, contrôle d'ambitus & intégrité métrique"]
-    G --> H
-    H --> I["Score final (Mesures, Voix MD/MG, Événements MIDI/VexFlow)"]
+    A["Navigateur (app.js / api-client.js)<br/>Paramètres UI + Seed"] -->|POST /api/generate| B["API FastAPI sur Render (api/main.py)"]
+    B --> C["1. Résolution des paramètres (resolve_params)"]
+    C --> D["2. Modèle théorique & Gammes music21 (api/theory.py)"]
+    D --> E["3. Planification harmonique & cadences (plan_harmony)"]
+    E --> F["4. Trame rythmique & motifs A/A' (gen_measure_rhythm)"]
+    F --> G["5. Mélodie chantante & consonance (gen_melody)"]
+    E --> H["6. Accompagnement avec Voice Leading (gen_accompaniment)"]
+    G --> I["7. Post-traitement : ambitus strict & extremums consonants"]
+    H --> I
+    I --> J["8. Assemblage music21.stream.Score & Sérialisation JSON"]
+    J -->|Réponse JSON| K["Client JS : Gravure VexFlow, Phrasé dynamique (events.js), Audio & MIDI"]
 ```
 
 ---
 
-## 1. Représentation des données musicales
+## 1. Représentation des données musicales (`api/theory.py`)
 
-### 1.1 Le degré diatonique absolu ($D$)
-Dans `theory.js`, une note n'est pas simplement un code MIDI chromatique. Elle est représentée par son **degré diatonique absolu $D$** :
+### 1.1 Le degré diatonique absolu ($D$) et `music21.pitch.Pitch`
+Une hauteur est représentée conjointement par son **degré diatonique absolu $D$** et son altération (`alter`), convertis en objets `music21.pitch.Pitch` :
 
 $$D = \text{octave} \times 7 + \text{indice de lettre} \quad (\text{avec } \text{Do}=0, \text{Ré}=1, \dots, \text{Si}=6)$$
 
-| Note | Octave | Indice lettre | $D$ | MIDI (hauteur naturelle) |
+| Note | Octave | Indice lettre | $D$ | MIDI (`Pitch.midi`) |
 | :--- | :---: | :---: | :---: | :---: |
 | **Do 1** ($C_1$) | 1 | 0 | **7** | 24 |
 | **Do 3** ($C_3$) | 3 | 0 | **21** | 48 |
@@ -38,204 +42,143 @@ $$D = \text{octave} \times 7 + \text{indice de lettre} \quad (\text{avec } \text
 | **La 4** ($A_4$) | 4 | 5 | **33** | 69 |
 | **Do 5** ($C_5$) | 5 | 0 | **35** | 72 |
 
-**Avantages musicaux de cette représentation :**
-- **Calcul naturel des mouvements conjoints / disjoints** : un intervalle de seconde diatonique correspond exactement à $|D_2 - D_1| = 1$.
-- **Découplage de la portée et des altérations** : la position d'une note sur la portée VexFlow dépend uniquement de $D$. L'altération (dièse $\sharp$, bémol $\flat$, bécarre $\natural$) est stockée séparément (`alter: -1, 0, 1`).
-- **Calcul universel de la hauteur MIDI** :
-  $$\text{MIDI} = \text{octave} \times 12 + \text{naturalPC}[\text{lettre}] + \text{alter} + 12$$
+**Avantages :**
+- Les 30 tonalités (15 majeures, 15 mineures) et les 4 gammes (`MajorScale`, `MinorScale`, `HarmonicMinorScale`, `MelodicMinorScale`) sont calculées directement via **`music21.key.Key`** et **`music21.scale`**.
+- Le degré $D$ sépare la position verticale sur la portée (VexFlow) de l'altération accidentelle (`-2` à `+2`) et permet de mesurer instantanément les mouvements conjoints ($|D_2 - D_1| = 1$) et l'écartement anatomique de la main ($\le 8$ degrés).
 
-### 1.2 Unités de durée discrètes
-Pour éliminer tout problème d'arrondi à virgule flottante, les durées sont exprimées en unités entières discrètes où **1 noire = 4 unités** :
+### 1.2 Unités de durée et N-olets (Triolets / Duolets)
+Les durées de base sont exprimées en **unités de double-croche** (**1 noire = 4 unités**, soit `quarterLength = nd / 4` dans `music21`) :
 
-| Figure | Symbole | Unités |
+| Figure | Unités (`dur`) | `quarterLength` (`music21`) |
 | :--- | :---: | :---: |
-| Double-croche | 𝅘𝅥𝅯 | 1 |
-| Croche | 𝅘𝅥𝅮 | 2 |
-| Croche pointée | 𝅘𝅥𝅮. | 3 |
-| Noire | 𝅘𝅥 | 4 |
-| Noire pointée | 𝅘𝅥. | 6 |
-| Blanche | 𝅗𝅥 | 8 |
-| Blanche pointée | 𝅗𝅥. | 12 |
-| Ronde | 𝅝 | 16 |
+| Double-croche | 1 | `1/4` |
+| Croche | 2 | `1/2` |
+| Croche pointée | 3 | `3/4` |
+| Noire | 4 | `1` |
+| Noire pointée | 6 | `3/2` |
+| Blanche | 8 | `2` |
+| Blanche pointée | 12 | `3` |
+| Ronde | 16 | `4` |
 
-Une mesure en **4/4** compte 16 unités ; en **3/4**, 12 unités ; en **6/8**, 12 unités (2 temps ternaires de 6 unités) ; en **2/4**, 8 unités.
+Pour les **N-olets**, chaque événement distingue :
+- `dur` : la durée de jeu réelle en unités (ex. `4/3` pour une croche de triolet, `8/3` pour une noire de triolet, `3` pour une croche de duolet en 6/8 ou 12/8).
+- `notationDur` : la figure écrite sur la portée (`2` pour une croche, `4` pour une noire).
+- `tuplet` : `{ id, num, occupied }` converti en `music21.duration.Tuplet(num, occupied)` côté Python et tracé via `VF.Tuplet` côté VexFlow.
 
-### 1.3 Générateur pseudo-aléatoire (`rng.js`)
-L'algorithme utilise un PRNG déterministe basé sur une graine hexadécimale (`seed`). Il fournit des tirages uniformes, pondérés (`rng.weighted(weights)`) et des tests probabilistes (`rng.chance(prob)`).
+### 1.3 Reproductibilité (`SeededRng`)
+`SeededRng(seed)` encapsule `random.Random(seed & 0xFFFFFFFF)` et fournit des tirages uniformes, pondérés (`weighted`) et probabilistes (`chance`) garantissant une partition identique à graine et réglages égaux.
 
 ---
 
-## 2. Résolution des paramètres (`resolveParams`)
+## 2. Résolution des paramètres (`resolve_params`)
 
-La fonction `resolveParams` résout les éventuelles cases aléatoires (🎲) et filtre les contraintes selon les **5 niveaux de difficulté** :
+Résout les cases aléatoires (🎲) et filtre tonalités, chiffrages, tempi et enrichissements selon les **5 niveaux** :
 
-| Niveau | Armure max | Chiffrages admis | Chords enrichis | BPM par défaut |
+| Niveau | Armure max | Chiffrages admis | Accords enrichis (`auto`) | BPM par défaut |
 | :--- | :---: | :---: | :---: | :---: |
-| **1. Initiation (5 doigts)** | $\le 1$ altération (Do, Sol, Fa) | 4/4, 3/4 | Triades fondamentales | 60 - 80 |
-| **2. Débutant** | $\le 2$ altérations | 4/4, 3/4, 2/4 | $V_7$ discret | 72 - 96 |
-| **3. Intermédiaire** | $\le 4$ altérations | 4/4, 3/4, 2/4, 6/8, 2/2 | 7e / add9 | 88 - 120 |
-| **4. Avancé** | $\le 7$ altérations | Tous chiffrages | 9e / sus4 | 100 - 144 |
-| **5. Virtuose** | $\le 7$ altérations | Tous chiffrages | 9e / 11e / 13e | 112 - 160 |
+| **1. Initiation (5 doigts)** | $\le 1$ altération | 4/4, 3/4 | Triades simples | 60 - 80 |
+| **2. Débutant** | $\le 2$ altérations | 4/4, 3/4, 2/4 | $V_7$ discret (MG) | 72 - 96 |
+| **3. Intermédiaire** | $\le 4$ altérations | 4/4, 3/4, 2/4, 6/8, 2/2 | 7e / add9 (MD + MG) | 88 - 120 |
+| **4. Avancé** | $\le 7$ altérations | Tous chiffrages | 9e / sus4 / add9 | 100 - 144 |
+| **5. Virtuose** | $\le 7$ altérations | Tous chiffrages | 9e / 11e / 13e / sus4 | 112 - 160 |
 
 ---
 
-## 3. Planification harmonique (`planHarmony`)
+## 3. Planification harmonique & cadences (`plan_harmony`)
 
-Avant de poser la moindre note, l'algorithme construit la **grille harmonique** sous forme de tranches temporelles (*slots*).
+L'algorithme construit la grille harmonique par *slots* (1 mesure complète, ou 2 demi-mesures en 4 temps dès le niveau *Intermédiaire*) :
 
-### 3.1 Découpage des slots harmoniques
-- En temps normal, un accord dure **une mesure complète**.
-- Dès le niveau *Intermédiaire* sur les mesures à 4 temps, l'accord peut être scindé en deux accords d'une demi-mesure (2 temps chacun), avec une probabilité croissante (20% en intermédiaire, 35% en avancé, 50% en virtuose).
-
-### 3.2 Degrés harmoniques admis selon le niveau
-```
-Initiation    : [I, IV, V]
-Débutant      : [I, ii, IV, V, vi]
-Intermédiaire : [I, ii, IV, V, vi]
-Avancé/Expert : [I, ii, iii, IV, V, vi]  (en mineur, le degré iii est écarté pour préserver la clarté tonale)
-```
-
-### 3.3 Structure cadentielle classique
-L'algorithme impose les règles de la syntaxe harmonique tonale :
-1. **Mesure 1** : Tonique obligatoire ($I$) pour poser le cadre tonal.
-2. **Dernière mesure** : Tonique conclusive obligatoire ($I$).
-3. **Avant-dernière mesure** : Accord de dominante ($V$ ou $V_7$) pour former une cadence parfaite $V \to I$.
-4. **Milieu de pièce** ($\ge 4$ mesures) : suspension sur la dominante ($V$) pour créer une **demi-cadence** respiratoire.
-5. **Enchaînements intermédiaires** (chaîne de Markov harmonique orientée) :
-   - Après $V$ $\to$ résolution vers $I$, ou cadence rompue vers $vi$, ou vers $IV$.
-   - Après $ii$ $\to$ préparation de dominante vers $V$.
-   - Après $IV$ $\to$ vers $V$, $I$, ou $ii$.
-   - Après $vi$ $\to$ vers $ii$, $IV$, ou $V$.
-
-### 3.4 Enrichissements d'accords
-Selon les réglages et le niveau, des extensions sont injectées :
-- **7e** ($V_7$, $I_{\text{maj}7}$, $ii_7$, $vi_7$) : ajout du 6e degré au-dessus de la fondamentale.
-- **9e / add9** : ajout du 1er degré de l'octave supérieure.
-- **sus4** : suspension de quarte remplaçant la tierce.
+1. **Mesure 1** : Tonique obligatoire ($I$).
+2. **Demi-cadence médiane** ($\ge 4$ mesures) : suspension sur la dominante ($V$ ou $V_7$) en fin de première moitié.
+3. **Cadence finale préparée** : pré-dominante ($ii$ ou $IV$) $\to$ dominante ($V$ / $V_7$ / $V_9$) $\to$ tonique conclusive ($I$).
+4. **Enchaînements fluides** : matrice de transitions pondérées évitant les répétitions statiques d'un même accord sur deux slots consécutifs.
+5. **Extensions** : 7e, 9e, `sus4` et `add9` appliqués selon le niveau et le mode d'enrichissement choisi.
 
 ---
 
-## 4. Génération de la trame rythmique (`genMeasureRhythm`)
+## 4. Trame rythmique complexe (`gen_measure_rhythm`)
 
-Le rythme est généré **mesure par mesure et temps par temps (beat-by-beat)** à l'aide de motifs rythmiques pondérés (`BEAT_PATTERNS`).
+Les niveaux **Initiation** et **Débutant** restent sur des valeurs simples et stables. Dès le niveau **Intermédiaire** (et de façon accrue en **Avancé** et **Virtuose**), le moteur introduit des figures rythmiques avancées :
 
 ```mermaid
 flowchart LR
-    subgraph S1 ["Exemples de motifs par temps (4 unités = noire)"]
+    subgraph S1 ["Enrichissements rythmiques dès le niveau Intermédiaire"]
         direction TB
-        P1["4 : Noire"]
-        P2["2 + 2 : 2 Croches"]
-        P3["3 + 1 : Noire pointée - Double"]
-        P4["1 + 1 + 1 + 1 : 4 Doubles"]
-        P5["2 + 1 + 1 : Croche - 2 Doubles"]
+        R1["Soupirs & Silences : soupir (-4), demi-soupir (-2), quart de soupir (-1), soupir pointé (-6)"]
+        R2["Contretemps & Syncopes 1 temps : [-2, 2], [-1, 1, 2], [1, 2, 1], [-2, 2, 2]"]
+        R3["Syncopes & Contretemps 2 temps : [2, 4, 2], [-4, 4], [-2, 2, -2, 2]"]
+        R4["Triolets (3 pour 2) : croches (dur 4/3), noires (dur 8/3), variantes avec silence"]
+        R5["Duolets (2 pour 3) en 6/8 et 12/8 : 2 croches sur un temps ternaire (dur 3)"]
     end
 ```
 
-- **En Initiation** : les temps ne sont constitués que de figures longues (noires isolées ou rondes/blanches sur toute la mesure).
-- **En Débutant** : apparition des croches régulières `[2, 2]`.
-- **En Intermédiaire** : apparition des rythmes pointés `[3, 1]`.
-- **En Avancé et Virtuose** : introduction des doubles-croches `[1, 1, 1, 1]`, `[2, 1, 1]`, `[1, 1, 2]`.
-- **Dernière mesure** : décomposition en une seule valeur longue tenue pour garantir une fin d'exercice stable et claire.
+- **Garde-fous musicaux** : la première mesure ne démarre pas par un silence complet sur le 1er temps, aucune mesure ne peut être intégralement silencieuse, et la dernière mesure reste une valeur longue conclusive.
+- **Cohérence motivique (A / A')** : pour les pièces $\ge 6$ mesures, le début de la seconde moitié (`m = n // 2`) rappelle dans 45 % des cas le motif rythmique de la mesure 1.
 
 ---
 
-## 5. Composition de la mélodie chantante (`genMelody`)
+## 5. Mélodie chantante & Consonance (`gen_melody`)
 
-La mélodie (main droite, ou main gauche seule) est construite par un parcours probabiliste contraint :
-
-### 5.1 Tessiture et pivot
-L'ambitus $[minD, maxD]$ est scindé pour attribuer une zone privilégiée à la main droite :
-$$\text{pivot} = \text{arrondi}(minD + (maxD - minD) \times 0.45)$$
-La main droite évolue principalement au-dessus du pivot, tout en disposant de toute la plage supérieure jusqu'à $maxD$.
-
-### 5.2 Profil mélodique en arc et Climax
-Pour éviter une ligne plate ou erratique, l'algorithme génère un **arc narratif** :
-- **Début** : départ sur une note stable de l'accord (fondamentale ou quinte).
-- **Montée vers le point culminant (Climax)** : situé aux $\approx 65\%$ de la pièce, le sommet mélodique atteint expressément la note la plus haute choisie ($maxD$).
-- **Résolution finale** : l'avant-dernière note privilégie un mouvement conjoint (degré 1 ou 6 de la gamme, sensible ou sus-tonique) se résolvant directement sur la tonique finale.
+### 5.1 Tessiture, profil en arc et climax consonant
+L'ambitus $[minD, maxD]$ est partagé autour d'un pivot ($minD + 0.45 \times (maxD - minD)$) entre la main gauche et la main droite.
 
 ```mermaid
 flowchart LR
-    M1["1. Départ<br/>(Tonique / Quinte stable)"] --> M2["2. Ascension<br/>(Mouvements conjoints)"]
-    M2 --> M3["3. Climax (~65%)<br/>(Atteint maxD)"]
-    M3 --> M4["4. Pré-cadence<br/>(Sensible / II - Saut compensé)"]
-    M4 --> M5["5. Résolution<br/>(Tonique conclusive)"]
+    M1["1. Départ<br/>(Triade stable)"] --> M2["2. Développement<br/>(Mouvements conjoints)"]
+    M2 --> M3["3. Demi-cadence & Rappel A'<br/>(Contour motivique)"]
+    M3 --> M4["4. Climax (~65%)<br/>(Approche progressive vers maxD)"]
+    M4 --> M5["5. Cadence finale<br/>(Sensible / II -> Tonique)"]
 ```
 
-### 5.3 Pondération des intervalles et conduite des voix
-À chaque note, l'intervalle avec la note précédente est choisi selon la matrice `INTERVAL_WEIGHTS` :
+- **`pick_consonant_idx`** : au lieu de forcer `maxD` (ou `minD`) sur un indice arbitraire, l'algorithme choisit l'emplacement proche de 65 % (ou 25 %) où cette note appartient à la **triade de l'accord courant**, évitant toute dissonance forcée.
+- **Consonance stricte en début de mesure** : sur le 1er temps de chaque mesure (`ev.start == 0`) ainsi que sur la toute première note (`i == 0`), la mélodie impose une note de la **triade consonante** de l'accord (fondamentale, tierce ou quinte) lorsqu'elle est disponible dans l'ambitus.
 
-- **Préférence forte pour les mouvements conjoints** (intervalles de seconde, poids $\approx 4$ à $8$).
-- **Tierces modérées** (poids $\approx 1$ à $3$).
-- **Quartes, quintes et octaves rares** (sauts expressifs).
-- **Règle du saut compensé** : lorsqu'un saut $\ge 3$ degrés a lieu, la note suivante doit obligatoirement changer de direction par un mouvement conjoint (règle contrapuntique classique).
-- **Pas de triple répétition** : il est interdit de répéter 3 fois consécutivement la même note.
-- **Temps forts vs temps faibles** : sur les temps forts, les notes réelles de l'accord (`isCT`) reçoivent un bonus de probabilité ; sur temps faibles, les notes de passage diatoniques sont libres.
-
-### 5.4 Traitement du mineur mélodique
-Lorsque la tonalité est en **mineur mélodique** :
-- Si la mélodie monte ou se dirige vers la sensible haussée, les **6e et 7e degrés sont haussés** (`melodyUp`).
-- Si la mélodie descend sans tension vers la sensible, les **6e et 7e degrés redeviennent naturels** (`melodyDown`).
-
-### 5.5 Harmonisation de la main droite
-Si l'option d'enrichissement de la main droite est activée :
-- Des notes complémentaires d'accords sont injectées **sous le chant** sur les temps forts.
-- **Contrainte anatomique stricte** : l'écartement entre la note la plus basse et le chant soprano ne dépasse jamais 7 degrés (une octave), garantissant la parfaite jouabilité d'une seule main.
+### 5.2 Conduite mélodique et règles contrapuntiques
+- **Pondération des intervalles** (`INTERVAL_WEIGHTS`) privilégiant les mouvements conjoints.
+- **Règle du saut compensé** : un saut $\ge 3$ degrés est suivi préférentiellement d'un mouvement conjoint en sens inverse.
+- **Évitement des dissonances mélodiques** : pénalisation forte des sauts de triton (degrés $3 \leftrightarrow 6$) et des sauts de 7e ; interdiction de 3 notes identiques consécutives.
+- **Rappel motivique (A')** : mémorisation des 4 premiers intervalles du thème (`theme_intervals`) et bonus de probabilité en début de seconde phrase.
+- **Mineur mélodique** : 6e et 7e degrés haussés à la montée ou près de la sensible, naturels à la descente.
+- **Harmonisation MD** : ajout éventuel de 1 à 2 notes d'accord sous le chant dans un écart maximal de 7 degrés.
 
 ---
 
-## 6. Composition de l'accompagnement (`genAccompaniment`)
+## 6. Accompagnement pianistique & Voice Leading (`gen_accompaniment`)
 
-La main gauche utilise des **patterns pianistiques idiomatiques** adaptés à la métrique et au niveau :
+### 6.1 Conduite des voix (*Voice Leading*)
+Au lieu de replacer chaque accord en position fondamentale fixe, la main gauche sélectionne pour chaque changement d'accord :
+- le **renversement des voix médiums (`upper`) le plus proche** du centre de l'accord précédent (`closest_octave`), favorisant les notes communes et les mouvements conjoints ;
+- une **ligne de basse fluide** (`r`) vers l'octave la plus proche de la basse précédente, tout en ancrant `minD` uniquement sur un slot dont la fondamentale correspond réellement à sa lettre (évitant tout faux accord en mesure 1) ;
+- la **règle anatomique stricte** : aucun accord plaqué d'une seule main ne dépasse 8 degrés (une octave).
 
-### 6.1 Ancrage de la note minimale ($minD$)
-L'algorithme identifie le slot harmonique dont la fondamentale correspond à la lettre de $minD$, et y ancre organiquement la basse la plus profonde du morceau.
-
-### 6.2 Styles d'accompagnement selon le mètre et le niveau
-
-#### A. Style Valse classique (mesures en 3/4)
-- **Temps 1** : Basse fondamentale jouée seule dans le registre grave.
-- **Temps 2 et 3** : Voicings d'accords compacts et sonores dans le registre médium.
-
-#### B. Style Barcarolle / Berceuse (mesures composées en 6/8, 12/8)
-- Arpège balancé fluide de 3 croches par temps :
-  $$\text{Basse fondamentale (temps 1)} \longrightarrow \text{Tierce / Quinte médium} \longrightarrow \text{Septième / Octave}$$
-
-#### C. Styles Binaires (4/4, 2/4, 2/2)
-- **Initiation** : Fondamentale tenue en rondes ou blanches.
-- **Débutant** : Quinte ouverte plaquée ($r, r+4$) ou pulsation en noires régulières.
-- **Intermédiaire** :
-  - **Basse d'Alberti** : motif arpégé brisé classique (*Basse - Quinte - Tierce - Quinte*).
-  - **Stride** : Basse sur les temps 1 et 3, accord plaqué sur les temps 2 et 4.
-- **Avancé & Virtuose** :
-  - Arpèges amples à 4 sons incluant 7es et 9es.
-  - Voicings enrichis polyphoniques.
-
-#### D. Cadence finale
-- Sur la dernière mesure, l'accompagnement se stabilise en une quinte ouverte noble et résonante ($r, r+4$) ou une fondamentale pleine, permettant à la résonance du piano de clore l'exercice.
+### 6.2 Styles pianistiques et complexité rythmique MG
+Dès le niveau **Intermédiaire**, la main gauche bénéficie elle aussi des enrichissements rythmiques :
+- **Valse (`3/4`)** : valse classique, valse avec **contretemps** (demi-soupir + accord), et **triolets d'arpèges** en *Avancé / Virtuose*.
+- **Trois croches (`3/8`)** : accompagnement régulier ou contretemps avec demi-soupir.
+- **Mesures composées (`6/8`, `12/8`)** : arpèges balancés, **duolets de croches** (`2 pour 3`) et contretemps ternaires avec silence.
+- **Mesures binaires (`4/4`, `2/4`, `2/2`, `5/4`)** :
+  - *Initiation / Débutant* : fondamentales tenues, quintes ouvertes ou noires régulières.
+  - *Intermédiaire* : basse d'Alberti, stride, **contretemps avec demi-soupirs** et **triolets d'arpège**.
+  - *Avancé / Virtuose* : arpèges enrichis (7e/9e), **syncopes `[2, 4, 2]`**, contretemps et **triolets de croches** (incluant des triolets avec silence en *Virtuose*).
 
 ---
 
-## 7. Post-traitement et garanties pédagogiques
-
-Avant d'exporter la partition, 3 phases de validation garantissent l'absence d'erreurs :
+## 7. Post-traitement, `music21.stream.Score` & Phrasé dynamique
 
 ```mermaid
 flowchart TD
-    V1["1. Clamping strict d'ambitus (minD, maxD)"] --> V2["2. Injection obligatoire des bornes extrêmes"]
-    V2 --> V3["3. Contrôle de complétude métrique"]
+    V1["1. Clamping strict d'ambitus (minD, maxD)"] --> V2["2. Garantie d'extremums consonants (pick_extremum_event)"]
+    V2 --> V3["3. Assemblage music21.stream.Score (build_music21_score)"]
+    V3 --> V4["4. Rendu VexFlow & Phrasé dynamique (events.js)"]
 ```
 
-1. **Clamping strict d'ambitus** :
-   Chaque note $D$ est contrôlée. Si un voicing ou un arpège dépasse l'intervalle $[minD, maxD]$, la note est transposée par octaves diatoniques entières ($\pm 7$) jusqu'à réintégrer la plage autorisée, sans jamais altérer son nom de note ni son rôle harmonique.
-
-2. **Garantie de présence de $minD$ et $maxD$** :
-   Si un utilisateur spécifie un ambitus restreint (ex. Do2 - Sol5) :
-   - L'algorithme vérifie que la note la plus haute de la main droite touche exactement $maxD$. Si ce n'est pas le cas, le pic mélodique est ajusté sur $maxD$.
-   - Il vérifie que la basse de la main gauche touche exactement $minD$. Si ce n'est pas le cas, la note la plus grave est calée sur $minD$.
-
-3. **Intégrité métrique absolue** :
-   La somme des durées de chaque mesure sur chaque portée est vérifiée pour correspondre au total exact de la mesure ($meter.measureLen$). Aucune mesure ne peut être incomplète ou surchargée.
+1. **Clamping strict d'ambitus** : toute note hors $[minD, maxD]$ est ramenée par translation d'octave ($\pm 7$).
+2. **Garantie d'apparition de `minD` et `maxD` sans dissonance** (`pick_extremum_event`) : si une borne n'apparaît pas encore, le moteur choisit en priorité un événement dont l'accord contient cette note (et en basse sur le 1er temps, uniquement la fondamentale), en préservant l'écartement maximal d'une main ($\le 8$ degrés).
+3. **Construction `music21.stream.Score`** : `build_music21_score` génère les `Part` (`RightHand`, `LeftHand`), `Measure`, clés, armures, chiffrages, `MetronomeMark`, `Note`, `Chord`, `Rest` et `Tuplet`.
+4. **Phrasé dynamique côté client (`docs/js/events.js`)** :
+   - **Arche dynamique** en sinus sur la pièce (léger *crescendo* vers le milieu puis détente cadentielle).
+   - Mise en relief de la voix supérieure dans les accords (`+4` sur le soprano, `-4` sur les voix intérieures), notes tenues chantantes (`+4`) et notes rapides de passage plus légères (`-5`).
+   - Arrondi exact des ticks MIDI (`Math.round`) dans `docs/js/midi-file.js` pour une lecture fidèle des triolets et duolets.
 
 ---
 
@@ -243,9 +186,14 @@ flowchart TD
 
 | Fichier | Rôle clé |
 | :--- | :--- |
-| `docs/js/generator.js` | Moteur algorithmique principal (`planHarmony`, `genMelody`, `genAccompaniment`, `generateScore`). |
-| `docs/js/theory.js` | Modèle théorique : représentation $D$, 15 tonalités, 4 gammes mineures, calcul d'armures et fréquences MIDI. |
-| `docs/js/rng.js` | Générateur pseudo-aléatoire déterministe avec support de graine (`seed`). |
-| `docs/js/renderer.js` | Conversion des structures `Score` en notation vectorielle VexFlow (clés, armures, liaisons, hampes). |
-| `docs/js/player.js` | Horodatage précis, ordonnancement Web Audio / Web MIDI et surlignage SVG en temps réel. |
-
+| `api/main.py` | API FastAPI (`GET /api/health`, `POST /api/generate`), CORS et service statique de `docs/` pour Render. |
+| `api/generator.py` | Moteur de composition Python basé sur `music21` (`plan_harmony`, `gen_measure_rhythm`, `gen_melody`, `gen_accompaniment`, `build_music21_score`, `generate_score`). |
+| `api/theory.py` | Tonalités, gammes majeures/mineures et conversions hauteurs/MIDI via `music21`. |
+| `render.yaml` | Blueprint de déploiement Python sur Render (`requirements.txt`, `uvicorn`). |
+| `docs/js/api-client.js` | Client `fetch` appelant `POST /api/generate` sur le backend Render / local. |
+| `docs/js/config.js` | Configuration de l'URL de l'API Render (`DEFAULT_API_URL`). |
+| `docs/js/app.js` | Interface utilisateur, gestion asynchrone (`AbortController`) et cycle de vie. |
+| `docs/js/events.js` | Conversion de la partition en événements audio/MIDI avec phrasé dynamique expressif. |
+| `docs/js/renderer.js` | Gravure SVG VexFlow (clés, armures, ligatures, `VF.Tuplet`, surlignage temps réel). |
+| `docs/js/midi-file.js` | Export Standard MIDI File (`.mid`) avec arrondi de ticks compatible N-olets. |
+| `docs/js/player.js` | Séquenceur temps réel Web Audio / Web MIDI et synchronisation visuelle. |

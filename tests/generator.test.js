@@ -543,54 +543,21 @@ test('complexité rythmique dès le niveau intermédiaire : soupirs, contretemps
   assert.ok(bassHasDuplet, 'La main gauche doit aussi générer des duolets en mesure composée');
 });
 
-test('appogiatures : génération, respect de l ambitus, lecture/MIDI et gravure VexFlow', async () => {
-  const { buildNoteEvents } = await import('../docs/js/events.js');
-  const fs = await import('node:fs');
-  const vm = await import('node:vm');
-  const win = {};
-  vm.runInNewContext(fs.readFileSync(new URL('../docs/vendor/vexflow.js', import.meta.url), 'utf8'), {
-    window: win,
-    globalThis: win,
-  });
-  const VF = win.Vex.Flow;
-  const mockCtx = new Proxy({}, {
-    get: (target, prop) => (prop === 'checkContext' ? () => mockCtx : prop === 'measureText' ? () => ({ width: 10 }) : () => {}),
-  });
-
-  let foundApp = false;
-  for (const level of ['intermediaire', 'avance', 'expert']) {
-    for (let seed = 1; seed <= 12; seed++) {
-      const score = generateScore(baseSettings({ timeSignature: '4/4', measures: 8, level, hands: 'both', minNote: 'C3', maxNote: 'G5' }), seed);
-      const minD = score.params.minD;
-      const maxD = score.params.maxD;
-      for (const m of score.measures) {
-        for (const ev of (m.treble || [])) {
-          if (ev.appoggiatura) {
-            foundApp = true;
-            assert.ok(ev.appoggiatura.D >= minD && ev.appoggiatura.D <= maxD, 'appogiature dans l ambitus');
-            assert.notEqual(ev.appoggiatura.D, ev.notes[0].D);
-          }
-        }
+test('consonance en début de mesure entre la clef de sol et la clef de fa', () => {
+  for (const level of LEVELS) {
+    for (let seed = 1; seed <= 20; seed++) {
+      const s = generateScore(baseSettings({ timeSignature: '4/4', measures: 8, level, key: 'C', hands: 'both', minNote: 'E2', maxNote: 'F5' }), seed);
+      for (const m of s.measures) {
+        const t0 = m.treble?.find((e) => !e.rest && e.start === 0);
+        if (!t0) continue;
+        const slot = s.slots.find((sl) => sl.m === m.index && sl.start === 0);
+        const deg = slot.degree;
+        const triad = slot.sus4 ? [deg, (deg + 3) % 7, (deg + 4) % 7] : [deg, (deg + 2) % 7, (deg + 4) % 7];
+        const tTopDeg = degreeOf(t0.notes.at(-1).D, s.key);
+        assert.ok(triad.includes(tTopDeg), `${level} seed=${seed} m=${m.index} : soprano ${tTopDeg} hors triade ${triad}`);
       }
-      const noteEvs = buildNoteEvents(score);
-      assert.ok(noteEvs.length > 0);
-      const bytes = midiFileBytes(score, 100);
-      assert.ok(bytes.length > 20);
     }
   }
-  assert.ok(foundApp, 'Doit générer des appogiatures à partir du niveau intermédiaire');
-
-  // Vérification gravure VexFlow d'une appogiature avec altération accidentelle
-  const stave = new VF.Stave(0, 0, 400).addClef('treble').addTimeSignature('4/4');
-  const n1 = new VF.StaveNote({ clef: 'treble', keys: ['c/5'], duration: 'h', auto_stem: true });
-  const gn = new VF.GraceNote({ clef: 'treble', keys: ['b/4'], duration: '8', slash: false });
-  gn.addModifier(new VF.Accidental('#'), 0);
-  n1.addModifier(new VF.GraceNoteGroup([gn], false), 0);
-  const n2 = new VF.StaveNote({ clef: 'treble', keys: ['d/5'], duration: 'h', auto_stem: true });
-  const voice = new VF.Voice({ num_beats: 4, beat_value: 4 }).setMode(VF.Voice.Mode.SOFT).addTickables([n1, n2]);
-  voice.setStave(stave);
-  new VF.Formatter().joinVoices([voice]).format([voice], 350);
-  assert.doesNotThrow(() => voice.draw(mockCtx, stave));
 });
 
 

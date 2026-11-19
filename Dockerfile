@@ -1,14 +1,17 @@
-FROM nginx:alpine
+FROM python:3.12-slim
 
-# Cloud Run injecte la variable d'environnement PORT (par défaut 8080)
-ENV PORT=8080
+WORKDIR /app
 
-# Copie du template de configuration nginx (automatiquement résolu par envsubst dans l'image officielle)
-COPY nginx.conf.template /etc/nginx/templates/default.conf.template
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PORT=8080
 
-# Copie des fichiers statiques de l'application
-COPY docs /usr/share/nginx/html
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY api ./api
+COPY docs ./docs
 
 EXPOSE 8080
 
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
