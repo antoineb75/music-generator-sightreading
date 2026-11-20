@@ -588,5 +588,24 @@ test('MIDI expressif : Tempo Map (ritardando), pédale syncopée CC 64 / Una Cor
   assert.ok(bytes.length > 100);
 });
 
+test('volumes séparés main droite / main gauche dans Player', () => {
+  const synth = { now: 0, ensure: async () => {}, stopAll: () => {}, playNote: () => {} };
+  const midi = { ready: false, allNotesOff: () => {} };
+  const player = new Player({ synth, midi });
+  assert.equal(player.volumeRight, 1);
+  assert.equal(player.volumeLeft, 1);
+
+  player.setHandVolume('right', 0.5);
+  player.setHandVolume('left', 0);
+  assert.equal(player.volumeRight, 0.5);
+  assert.equal(player.volumeLeft, 0);
+
+  // Bornes [0, 1]
+  player.setHandVolume('right', 2);
+  player.setHandVolume('left', -0.4);
+  assert.equal(player.volumeRight, 1);
+  assert.equal(player.volumeLeft, 0);
+});
+
 
 
