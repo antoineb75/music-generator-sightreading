@@ -560,5 +560,52 @@ test('consonance en début de mesure entre la clef de sol et la clef de fa', () 
   }
 });
 
+test('MIDI expressif : Tempo Map (ritardando), pédale syncopée CC 64 / Una Corda CC 67, accords roulés et swing Pop', async () => {
+  const { buildNoteEvents, buildPedalEvents, buildTempoEvents } = await import('../docs/js/events.js');
+  const baseScore = generateScore(baseSettings({ timeSignature: '4/4', measures: 8, level: 'avance', key: 'C', hands: 'both' }), 77);
+
+  // 1. Style Romantique : Tempo Map avec rubato + ritardando final, pédale syncopée + Una Corda CC 67
+  const romScore = { ...baseScore, params: { ...baseScore.params, style: 'romantique' } };
+  const tempos = buildTempoEvents(romScore, 100);
+  assert.ok(tempos.length >= 4, 'La Tempo Map doit comporter rubato et ritardando final');
+  assert.ok(tempos.at(-1).bpm < 100, 'Le tempo final doit ralentir (ritardando)');
+
+  const pedals = buildPedalEvents(romScore);
+  assert.ok(pedals.some((p) => p.cc === 64 && p.value === 0), 'Doit contenir des relâchements CC 64');
+  assert.ok(pedals.some((p) => p.cc === 67 && p.value === 127), 'Doit enclencher Una Corda CC 67 en Romantique');
+
+  const romNotes = buildNoteEvents(romScore);
+  assert.ok(romNotes.some((n) => n.rollSec > 0), 'Doit rouler les accords larges / final');
+
+  // 2. Style Pop : swing sur croches en contretemps
+  const popScore = { ...baseScore, params: { ...baseScore.params, style: 'pop' } };
+  const popNotes = buildNoteEvents(popScore);
+  assert.ok(popNotes.length > 0);
+
+  // 3. Export .mid valide avec Tempo Map et CC 64/67
+  const bytes = midiFileBytes(romScore, 100);
+  assert.equal(String.fromCharCode(...bytes.slice(0, 4)), 'MThd');
+  assert.ok(bytes.length > 100);
+});
+
+test('volumes séparés main droite / main gauche dans Player', () => {
+  const synth = { now: 0, ensure: async () => {}, stopAll: () => {}, playNote: () => {} };
+  const midi = { ready: false, allNotesOff: () => {} };
+  const player = new Player({ synth, midi });
+  assert.equal(player.volumeRight, 1);
+  assert.equal(player.volumeLeft, 1);
+
+  player.setHandVolume('right', 0.5);
+  player.setHandVolume('left', 0);
+  assert.equal(player.volumeRight, 0.5);
+  assert.equal(player.volumeLeft, 0);
+
+  // Bornes [0, 1]
+  player.setHandVolume('right', 2);
+  player.setHandVolume('left', -0.4);
+  assert.equal(player.volumeRight, 1);
+  assert.equal(player.volumeLeft, 0);
+});
+
 
 

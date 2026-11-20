@@ -22,6 +22,8 @@ export class Player {
     this.onStateChange = onStateChange;
     this.output = 'synth';
     this.bpm = 90;
+    this.volumeRight = 1.0;
+    this.volumeLeft = 1.0;
     this.metronome = false;
     this.state = 'stopped';
     this.score = null;
@@ -73,6 +75,21 @@ export class Player {
     this.bpm = bpm;
   }
 
+  /** Règle en direct le volume de restitution d'une main ('right' | 'left', 0..1). */
+  setHandVolume(hand, ratio) {
+    const clamped = Math.max(0, Math.min(1, Number(ratio) || 0));
+    if (hand === 'left') this.volumeLeft = clamped;
+    else this.volumeRight = clamped;
+    this.synth?.setHandVolume?.(hand, clamped);
+    if (this.output === 'midi' && this.midi?.ready) {
+      const ch = hand === 'left' ? 1 : 0;
+      const ccVal = Math.round(clamped * 127);
+      const t = performance.now() / 1000;
+      this.midi.cc?.(ch, 7, ccVal, t);   // CC 7 : Channel Volume
+      this.midi.cc?.(ch, 11, ccVal, t);  // CC 11 : Expression
+    }
+  }
+
   setOutput(output) {
     if (output === this.output) return;
     const wasPlaying = this.state === 'playing';
@@ -115,6 +132,10 @@ export class Player {
       const t = this.clock();
       this.midi.programChange(0, 0, t);
       this.midi.programChange(1, 0, t);
+      this.midi.cc?.(0, 7, Math.round(this.volumeRight * 127), t);
+      this.midi.cc?.(0, 11, Math.round(this.volumeRight * 127), t);
+      this.midi.cc?.(1, 7, Math.round(this.volumeLeft * 127), t);
+      this.midi.cc?.(1, 11, Math.round(this.volumeLeft * 127), t);
     }
 
     this.#setState('playing');
@@ -170,15 +191,19 @@ export class Player {
       const n = this.notes[this.noteIdx++];
       // Léger ritardando sur la dernière mesure + micro-humanisation subtile
       const ritOffset = n.u >= ritStartU ? ((n.u - ritStartU) / Math.max(1, this.score.meter.measureLen)) * spu * 0.6 : 0;
-      const t = Math.max(this.clock(), this.timeOf(n.u) + (n.humanizeSec ?? 0) + ritOffset);
+      const t = Math.max(this.clock(), this.timeOf(n.u) + (n.humanizeSec ?? 0) + (n.rollSec ?? 0) + ritOffset);
       const d = n.durU * spu * (n.u >= ritStartU ? 1.12 : 1.0);
       const baseGate = d * (n.gateRatio ?? 0.95);
       // Légère résonance additionnelle sur le synthé interne quand la pédale est active
       const synthGate = hasPedal ? Math.min(d * 1.25, baseGate + 0.14) : baseGate;
+      const handVol = n.hand === 'left' ? this.volumeLeft : this.volumeRight;
       if (this.output === 'synth') {
-        this.synth.playNote(n.midi, t, synthGate, n.vel);
-      } else {
-        this.midi.noteOn(n.channel, n.midi, n.vel, t);
+        // Le gain réel de chaque main est géré en temps réel par rightGain / leftGain dans PianoSynth
+        if (handVol > 0) this.synth.playNote(n.midi, t, synthGate, n.vel, n.hand);
+      } else if (handVol > 0) {
+        // En MIDI : CC 7 & CC 11 ajustent le canal en temps réel + courbe perceptuelle sur la vélocité
+        const scaledVel = Math.max(1, Math.min(127, Math.round(n.vel * (handVol ** 1.4))));
+        this.midi.noteOn(n.channel, n.midi, scaledVel, t);
         this.midi.noteOff(n.channel, n.midi, t + baseGate);
       }
       this.visual.push({ id: n.id, on: t, off: t + d - 0.015, started: false });
@@ -187,8 +212,9 @@ export class Player {
       while (this.pedalIdx < this.pedals.length && this.timeOf(this.pedals[this.pedalIdx].u) < horizon) {
         const p = this.pedals[this.pedalIdx++];
         const t = this.timeOf(p.u);
-        this.midi.sustain(0, p.value, t);
-        this.midi.sustain(1, p.value, t);
+        const ccNum = p.cc ?? 64;
+        this.midi.cc(0, ccNum, p.value, t);
+        this.midi.cc(1, ccNum, p.value, t);
       }
     } else {
       while (this.pedalIdx < this.pedals.length && this.timeOf(this.pedals[this.pedalIdx].u) < horizon) this.pedalIdx++;

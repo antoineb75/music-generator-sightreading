@@ -16,6 +16,7 @@ export class PianoSynth {
     this.waves = new Map();
     this.voices = new Set();
     this.volume = 0.8;
+    this.handVolumes = { right: 1.0, left: 1.0 };
   }
 
   /** Doit être appelé depuis un geste utilisateur (clic). */
@@ -44,10 +45,34 @@ export class PianoSynth {
     if (this.master) this.master.gain.setTargetAtTime(0.55 * v, this.now, 0.05);
   }
 
+  /** Règle en direct le gain de restitution d'une main ('right' | 'left', 0..1). */
+  setHandVolume(hand, ratio) {
+    const key = hand === 'left' ? 'left' : 'right';
+    const v = Math.max(0, Math.min(1, Number(ratio) || 0));
+    const gain = v * v; // courbe perceptuelle (0% = muet, 50% = -12 dB, 100% = 0 dB)
+    this.handVolumes[key] = gain;
+    const node = key === 'left' ? this.leftGain : this.rightGain;
+    if (node && this.ctx) {
+      const now = this.now;
+      node.gain.cancelScheduledValues(now);
+      node.gain.setValueAtTime(node.gain.value, now);
+      node.gain.linearRampToValueAtTime(gain, now + 0.025);
+    }
+  }
+
   #buildChain() {
     const ctx = this.ctx;
     this.master = ctx.createGain();
     this.master.gain.value = 0.55 * this.volume;
+
+    // Bus de volume indépendants par main (modification temps réel sans changer le timbre)
+    this.rightGain = ctx.createGain();
+    this.rightGain.gain.value = this.handVolumes.right;
+    this.rightGain.connect(this.master);
+
+    this.leftGain = ctx.createGain();
+    this.leftGain.gain.value = this.handVolumes.left;
+    this.leftGain.connect(this.master);
 
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -14;
@@ -118,10 +143,12 @@ export class PianoSynth {
    * @param {number} t     instant de début (horloge AudioContext)
    * @param {number} dur   durée en secondes
    * @param {number} vel   vélocité 0-127
+   * @param {'right'|'left'} [hand='right'] main associée (routage sur bus de volume dédié)
    */
-  playNote(midi, t, dur, vel = 80) {
+  playNote(midi, t, dur, vel = 80, hand = 'right') {
     const ctx = this.ctx;
     if (!ctx) return null;
+    const bus = (hand === 'left' ? this.leftGain : this.rightGain) || this.master;
     const f = mtof(midi);
     const v = Math.max(0.05, Math.min(1, vel / 127));
     const tEnd = t + Math.max(0.05, dur);
@@ -155,7 +182,7 @@ export class PianoSynth {
       o.stop(tEnd + 0.7);
       return o;
     });
-    filter.connect(env).connect(this.master);
+    filter.connect(env).connect(bus);
 
     // Marteau
     const hammer = ctx.createBufferSource();
@@ -166,7 +193,7 @@ export class PianoSynth {
     bp.Q.value = 1.2;
     const hg = ctx.createGain();
     hg.gain.value = 0.05 * v;
-    hammer.connect(bp).connect(hg).connect(this.master);
+    hammer.connect(bp).connect(hg).connect(bus);
     hammer.start(t);
 
     const voice = {

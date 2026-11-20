@@ -553,9 +553,26 @@ def gen_measure_rhythm(rng: SeededRng, meter: dict[str, Any], level: str, is_las
 def build_piece_rhythms(rng: SeededRng, meter: dict[str, Any], level: str, n: int) -> list[list[dict[str, Any]]]:
     """Construit la trame rythmique selon une forme thématique cohérente A - A' - B - A''."""
     rhythms: list[list[dict[str, Any]]] = []
+    half_m = (n // 2) - 1 if n >= 4 else -1
+    L = meter["measureLen"]
+    B = meter["beatLen"]
     for m in range(n):
         if m == n - 1:
             rhythms.append(gen_measure_rhythm(rng, meter, level, True, m))
+            continue
+        # Respiration naturelle en fin de demi-cadence (note tenue + soupir de respiration)
+        if m == half_m and level in ("intermediaire", "avance", "expert") and B == 4 and L in (12, 16) and rng.chance(0.5):
+            if L == 16:
+                rhythms.append([
+                    {"start": 0, "dur": 8, "rest": False},
+                    {"start": 8, "dur": 4, "rest": False},
+                    {"start": 12, "dur": 4, "rest": True},
+                ])
+            else:
+                rhythms.append([
+                    {"start": 0, "dur": 8, "rest": False},
+                    {"start": 8, "dur": 4, "rest": True},
+                ])
             continue
         sec = section_of_measure(m, n)
         if sec == "A2" and (m % 2 == 0) and len(rhythms) >= 1 and rng.chance(0.65):
@@ -730,6 +747,25 @@ def plan_harmony(
             step_next = min((third_deg - next_root) % 7, (next_root - third_deg) % 7) == 1
             if (step_prev or step_next) and rng.chance(inv_prob):
                 cur["bassDegree"] = third_deg
+
+    # Retards (suspensions 4 -> 3) sur mesures scindées en 2 demi-mesures (Baroque / Classique / Romantique)
+    if level in ("avance", "expert") and style in ("baroque", "classique", "romantique"):
+        for i in range(1, len(slots) - 2):
+            if slots[i]["m"] == slots[i + 1]["m"] and not slots[i].get("chromaticAlters") and rng.chance(0.35):
+                target_deg = slots[i + 1]["degree"]
+                slots[i]["degree"] = target_deg
+                slots[i]["sus4"] = True
+                slots[i].pop("bassDegree", None)
+                slots[i + 1]["sus4"] = False
+
+    # Couleurs cadentielles stylistiques sur l'accord final
+    final_slot = slots[-1]
+    if style == "baroque" and mode == "minor" and level in ("avance", "expert") and rng.chance(0.45):
+        # Tierce picarde (tierce mineure haussée d'un demi-ton sur la tonique finale)
+        nat_scale = build_scale(key_info, "natural")
+        final_slot["chromaticAlters"] = {2: nat_scale["harmony"][2] + 1}
+    elif style == "pop" and level in ("intermediaire", "avance", "expert") and enrich_active and rng.chance(0.5):
+        final_slot["add9"] = True
 
     return slots
 
@@ -1005,6 +1041,7 @@ def gen_melody(
     events: list[list[dict[str, Any]]] = [[] for _ in range(n)]
     is_enriched_right = bool(ctx["enrichRight"] and hand == "right")
     pitched_map = {id(ev): idx for idx, (_, ev) in enumerate(pitched)}
+    prev_inner_d: int | None = None
 
     for m, rhythm in enumerate(rhythms):
         for i, ev in enumerate(rhythm):
@@ -1041,9 +1078,16 @@ def gen_melody(
                                 interval = ev["D"] - cand_d
                                 if min_d <= cand_d <= max_d and 2 <= interval <= 7 and cand_d not in candidates:
                                     candidates.append(cand_d)
-                        candidates.sort(reverse=True)
+                        # Conduite de la 2e voix intérieure (alto conjoint par rapport à prev_inner_d)
+                        if prev_inner_d is not None and level in ("avance", "expert") and not is_last_note:
+                            candidates.sort(key=lambda c: (abs(c - prev_inner_d), ev["D"] - c))
+                        else:
+                            candidates.sort(reverse=True)
                         max_add = (2 if level in ("avance", "expert") else 1) if is_last_note else (2 if level == "expert" else 1)
-                        for c_d in candidates[:max_add]:
+                        chosen_inner = candidates[:max_add]
+                        if chosen_inner:
+                            prev_inner_d = chosen_inner[0]
+                        for c_d in chosen_inner:
                             c_deg = degree_of(c_d, key_info)
                             c_alter = slot_alter(ch, c_deg, scale["harmony"][c_deg])
                             out["notes"].append(m21_pitch_to_note_dict(d_alter_to_m21_pitch(c_d, c_alter)))

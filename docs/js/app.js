@@ -53,6 +53,10 @@ async function initApp() {
   const checkMetronome = document.getElementById('check-metronome');
   const inputBpm = document.getElementById('input-bpm');
   const badgeBpm = document.getElementById('badge-bpm');
+  const inputVolRight = document.getElementById('input-vol-right');
+  const badgeVolRight = document.getElementById('badge-vol-right');
+  const inputVolLeft = document.getElementById('input-vol-left');
+  const badgeVolLeft = document.getElementById('badge-vol-left');
   const selectOutput = document.getElementById('select-output');
   const selectMidiDevice = document.getElementById('select-midi-device');
 
@@ -158,7 +162,7 @@ async function initApp() {
       const ev = allEvs.find((e) => e.id === evId);
       if (!ev || ev.rest) return;
       synth.ensure().then(() => {
-        ev.notes.forEach((n) => synth.playNote(n.midi, synth.now, 0.7, 85));
+        ev.notes.forEach((n) => synth.playNote(n.midi, synth.now, 0.7, 85, ev.hand));
       });
 
       if (settings.liveHints) {
@@ -229,6 +233,8 @@ async function initApp() {
     inputBpm.value = settings.bpm || 90;
     const itName = tempoItalianName(settings.bpm || 90);
     badgeBpm.textContent = `${settings.bpm || 90} BPM (${itName})`;
+    setHandVolumeValue('right', settings.volumeRight ?? 100, false);
+    setHandVolumeValue('left', settings.volumeLeft ?? 100, false);
     checkMetronome.checked = !!settings.metronome;
     if (checkLiveHints) checkLiveHints.checked = !!settings.liveHints;
     if (checkParamLiveHints) checkParamLiveHints.checked = !!settings.liveHints;
@@ -249,6 +255,8 @@ async function initApp() {
     updateMinorVisibility();
     updateRandomDisableStates();
     player.setTempo(settings.bpm || 90);
+    player.setHandVolume('right', (settings.volumeRight ?? 100) / 100);
+    player.setHandVolume('left', (settings.volumeLeft ?? 100) / 100);
     player.metronome = !!settings.metronome;
     player.setOutput(settings.output || 'synth');
   }
@@ -261,6 +269,18 @@ async function initApp() {
     settings.bpm = bpm;
     if (syncPlayer) player.setTempo(bpm);
     saveSettings(settings);
+  }
+
+  function setHandVolumeValue(hand, val, persist = true) {
+    const pct = Math.min(100, Math.max(0, Number.isFinite(Number(val)) ? Math.round(Number(val)) : 100));
+    const input = hand === 'left' ? inputVolLeft : inputVolRight;
+    const badge = hand === 'left' ? badgeVolLeft : badgeVolRight;
+    if (input) input.value = String(pct);
+    if (badge) badge.textContent = pct === 0 ? '🔇' : `${pct}%`;
+    if (hand === 'left') settings.volumeLeft = pct;
+    else settings.volumeRight = pct;
+    player.setHandVolume(hand, pct / 100);
+    if (persist) saveSettings(settings);
   }
 
   function ensureNoteRangeOrder(changedSource = 'min') {
@@ -496,6 +516,15 @@ async function initApp() {
 
   inputBpm.addEventListener('input', () => {
     setBpmValue(inputBpm.value);
+  });
+
+  ['input', 'change'].forEach((evt) => {
+    inputVolRight?.addEventListener(evt, () => {
+      setHandVolumeValue('right', inputVolRight.value);
+    });
+    inputVolLeft?.addEventListener(evt, () => {
+      setHandVolumeValue('left', inputVolLeft.value);
+    });
   });
 
   checkMetronome.addEventListener('change', () => {

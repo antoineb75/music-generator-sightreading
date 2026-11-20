@@ -17,6 +17,8 @@ export const DEFAULT_SETTINGS = {
   minNote: 'C2',
   maxNote: 'C6',
   bpm: 90,
+  volumeRight: 100,
+  volumeLeft: 100,
   metronome: false,
   liveHints: false, // Affichage en direct de la note la plus aiguë et de l'accord
   output: 'synth', // 'synth' | 'midi'
