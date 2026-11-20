@@ -1,6 +1,6 @@
 // Écriture d'un fichier MIDI standard (SMF format 1).
 
-import { buildNoteEvents, buildPedalEvents } from './events.js';
+import { buildNoteEvents, buildPedalEvents, buildTempoEvents } from './events.js';
 
 const TICKS_PER_QUARTER = 480;
 const TICKS_PER_UNIT = TICKS_PER_QUARTER / 4; // unité = double-croche
@@ -36,14 +36,20 @@ export function midiFileBytes(score, bpm) {
   // En MIDI, l'événement 0x51 exprime les microsecondes par noire (quarter note = 4 unités).
   // 1 battement faisant meter.beatLen unités, 1 unité = (60000000 / bpm) / meter.beatLen µs.
   // 1 noire (4 unités) = 4 * ((60000000 / bpm) / meter.beatLen) µs.
-  const tempo = Math.round((60000000 / bpm) * (4 / meter.beatLen));
+  // Tempo Map expressive (rubato de phrase, respiration demi-cadence, ritardando final)
+  const tempoEvents = buildTempoEvents(score, bpm);
   const conductor = [
     meta(0, 0x03, ascii('Partitio')),
-    meta(0, 0x51, [(tempo >> 16) & 255, (tempo >> 8) & 255, tempo & 255]),
     meta(0, 0x58, [meter.num, Math.log2(meter.den), 24, 8]),
     meta(0, 0x59, [key.fifths & 255, key.mode === 'minor' ? 1 : 0]),
   ];
+  for (const te of tempoEvents) {
+    const tempoUs = Math.round((60000000 / Math.max(30, te.bpm)) * (4 / meter.beatLen));
+    const tick = Math.max(0, Math.round(te.u * TICKS_PER_UNIT));
+    conductor.push(meta(tick, 0x51, [(tempoUs >> 16) & 255, (tempoUs >> 8) & 255, tempoUs & 255]));
+  }
 
+  const ticksPerSec = (bpm * meter.beatLen * TICKS_PER_UNIT) / 60;
   const notes = buildNoteEvents(score);
   const pedals = buildPedalEvents(score);
   const hands = [
@@ -53,7 +59,8 @@ export function midiFileBytes(score, bpm) {
   const tracks = hands.map(({ hand, name, channel }) => {
     const evs = [meta(0, 0x03, ascii(name)), { tick: 0, order: 1, bytes: [0xc0 | channel, 0] }];
     for (const n of notes.filter((x) => x.hand === hand)) {
-      const on = Math.round(n.u * TICKS_PER_UNIT);
+      const microTicks = Math.round(((n.humanizeSec ?? 0) + (n.rollSec ?? 0)) * ticksPerSec);
+      const on = Math.max(0, Math.round(n.u * TICKS_PER_UNIT) + microTicks);
       const gateRatio = n.gateRatio ?? 0.95;
       const off = Math.max(on + 10, Math.round((n.u + n.durU * gateRatio) * TICKS_PER_UNIT));
       evs.push({ tick: on, order: 3, bytes: [0x90 | channel, n.midi, n.vel] });
@@ -62,7 +69,8 @@ export function midiFileBytes(score, bpm) {
     if (hand === 'left') {
       for (const p of pedals) {
         const tick = Math.max(0, Math.round(p.u * TICKS_PER_UNIT));
-        evs.push({ tick, order: p.value === 0 ? 1 : 4, bytes: [0xb0 | channel, 64, p.value] });
+        const ccNum = p.cc ?? 64;
+        evs.push({ tick, order: p.value === 0 ? 1 : 4, bytes: [0xb0 | channel, ccNum, p.value] });
       }
     }
     return encodeTrack(evs);

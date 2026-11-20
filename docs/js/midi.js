@@ -53,8 +53,12 @@ export class MidiOut {
     this.send([0x80 | channel, note, 0], tSec);
   }
 
+  cc(channel, controller, value, tSec) {
+    this.send([0xb0 | channel, controller & 0x7f, Math.max(0, Math.min(127, value | 0))], tSec);
+  }
+
   sustain(channel, value, tSec) {
-    this.send([0xb0 | channel, 64, value ? 127 : 0], tSec);
+    this.cc(channel, 64, value ? 127 : 0, tSec);
   }
 
   allNotesOff() {
@@ -64,7 +68,8 @@ export class MidiOut {
     for (const t of [now, now + 0.25]) {
       for (const ch of [0, 1, 9]) {
         this.send([0xb0 | ch, 123, 0], t); // All Notes Off
-        this.send([0xb0 | ch, 64, 0], t); // pédale relâchée
+        this.send([0xb0 | ch, 64, 0], t); // pédale sustain relâchée
+        this.send([0xb0 | ch, 67, 0], t); // pédale douce relâchée
       }
     }
   }

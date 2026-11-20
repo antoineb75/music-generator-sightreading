@@ -170,7 +170,7 @@ export class Player {
       const n = this.notes[this.noteIdx++];
       // Léger ritardando sur la dernière mesure + micro-humanisation subtile
       const ritOffset = n.u >= ritStartU ? ((n.u - ritStartU) / Math.max(1, this.score.meter.measureLen)) * spu * 0.6 : 0;
-      const t = Math.max(this.clock(), this.timeOf(n.u) + (n.humanizeSec ?? 0) + ritOffset);
+      const t = Math.max(this.clock(), this.timeOf(n.u) + (n.humanizeSec ?? 0) + (n.rollSec ?? 0) + ritOffset);
       const d = n.durU * spu * (n.u >= ritStartU ? 1.12 : 1.0);
       const baseGate = d * (n.gateRatio ?? 0.95);
       // Légère résonance additionnelle sur le synthé interne quand la pédale est active
@@ -187,8 +187,9 @@ export class Player {
       while (this.pedalIdx < this.pedals.length && this.timeOf(this.pedals[this.pedalIdx].u) < horizon) {
         const p = this.pedals[this.pedalIdx++];
         const t = this.timeOf(p.u);
-        this.midi.sustain(0, p.value, t);
-        this.midi.sustain(1, p.value, t);
+        const ccNum = p.cc ?? 64;
+        this.midi.cc(0, ccNum, p.value, t);
+        this.midi.cc(1, ccNum, p.value, t);
       }
     } else {
       while (this.pedalIdx < this.pedals.length && this.timeOf(this.pedals[this.pedalIdx].u) < horizon) this.pedalIdx++;
