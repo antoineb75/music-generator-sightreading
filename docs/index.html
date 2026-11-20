@@ -239,6 +239,20 @@
           <span id="badge-bpm" class="tempo-badge">90 BPM</span>
         </div>
 
+        <!-- Volumes Main Droite / Main Gauche -->
+        <div class="hand-volumes">
+          <div class="volume-control volume-right" title="Volume sonore de la main droite (0% = muet)">
+            <label for="input-vol-right">MD :</label>
+            <input type="range" id="input-vol-right" class="volume-slider volume-slider-right" min="0" max="100" step="5" value="100">
+            <span id="badge-vol-right" class="volume-badge volume-badge-right">100%</span>
+          </div>
+          <div class="volume-control volume-left" title="Volume sonore de la main gauche (0% = muet)">
+            <label for="input-vol-left">MG :</label>
+            <input type="range" id="input-vol-left" class="volume-slider volume-slider-left" min="0" max="100" step="5" value="100">
+            <span id="badge-vol-left" class="volume-badge volume-badge-left">100%</span>
+          </div>
+        </div>
+
         <!-- Sortie audio / MIDI -->
         <div class="audio-output-select">
           <label for="select-output">Sortie :</label>

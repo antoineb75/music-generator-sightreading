@@ -22,6 +22,8 @@ export class Player {
     this.onStateChange = onStateChange;
     this.output = 'synth';
     this.bpm = 90;
+    this.volumeRight = 1.0;
+    this.volumeLeft = 1.0;
     this.metronome = false;
     this.state = 'stopped';
     this.score = null;

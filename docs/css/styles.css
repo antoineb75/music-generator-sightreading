@@ -344,6 +344,48 @@ body {
   min-width: 45px;
 }
 
+.hand-volumes {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: wrap;
+}
+
+.volume-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.volume-slider {
+  width: 68px;
+  cursor: pointer;
+}
+
+.volume-slider-right {
+  accent-color: #f472b6;
+}
+
+.volume-slider-left {
+  accent-color: #38bdf8;
+}
+
+.volume-badge {
+  font-weight: 600;
+  min-width: 34px;
+  font-variant-numeric: tabular-nums;
+}
+
+.volume-badge-right {
+  color: #f472b6;
+}
+
+.volume-badge-left {
+  color: #38bdf8;
+}
+
 .metronome-toggle {
   display: inline-flex;
   align-items: center;
